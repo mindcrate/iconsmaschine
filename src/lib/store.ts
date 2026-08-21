@@ -1,0 +1,98 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import crypto from "node:crypto";
+import { packsDir, safeJoin } from "./paths";
+import type { KitType } from "./spec";
+
+export interface Pack {
+  id: string;
+  /** Display name in the app library. */
+  name: string;
+  kitType: KitType;
+  /** The NI Resources folder name - must match Maschine exactly. */
+  vendor: string;
+  subfolder: string | null;
+  nks2: boolean;
+  background: string | null;
+  padding: number;
+  author: string;
+  share: boolean;
+  /** Your own labels for finding packs in this app. Not Maschine metadata. */
+  tags: string[];
+  hasLogo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ARTWORK_FILE = "source-artwork.png";
+export const LOGO_FILE = "source-logo.png";
+
+export function newPackId(): string {
+  return crypto.randomUUID();
+}
+
+function packDir(id: string): string {
+  return safeJoin(packsDir(), id);
+}
+
+export async function savePack(
+  pack: Pack,
+  sources?: { artwork?: Buffer; logo?: Buffer | null },
+): Promise<Pack> {
+  const dir = packDir(pack.id);
+  await fs.mkdir(dir, { recursive: true });
+  const updated = { ...pack, updatedAt: new Date().toISOString() };
+  await fs.writeFile(
+    path.join(dir, "pack.json"),
+    JSON.stringify(updated, null, 2),
+  );
+  if (sources?.artwork) {
+    await fs.writeFile(path.join(dir, ARTWORK_FILE), sources.artwork);
+  }
+  if (sources?.logo) {
+    await fs.writeFile(path.join(dir, LOGO_FILE), sources.logo);
+  } else if (sources && sources.logo === null) {
+    await fs.rm(path.join(dir, LOGO_FILE), { force: true });
+  }
+  return updated;
+}
+
+export async function readPack(id: string): Promise<Pack | null> {
+  try {
+    const raw = await fs.readFile(path.join(packDir(id), "pack.json"), "utf8");
+    return JSON.parse(raw) as Pack;
+  } catch {
+    return null;
+  }
+}
+
+export async function readSources(
+  id: string,
+): Promise<{ artwork: Buffer | null; logo: Buffer | null }> {
+  const dir = packDir(id);
+  const read = async (file: string) => {
+    try {
+      return await fs.readFile(path.join(dir, file));
+    } catch {
+      return null;
+    }
+  };
+  return { artwork: await read(ARTWORK_FILE), logo: await read(LOGO_FILE) };
+}
+
+export async function listPacks(): Promise<Pack[]> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(packsDir());
+  } catch {
+    return [];
+  }
+  const packs = await Promise.all(entries.map((id) => readPack(id)));
+  return packs
+    .filter((p): p is Pack => p !== null)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function deletePack(id: string): Promise<void> {
+  await fs.rm(packDir(id), { recursive: true, force: true });
+}

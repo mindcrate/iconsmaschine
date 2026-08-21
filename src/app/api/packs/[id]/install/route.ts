@@ -1,0 +1,42 @@
+import { buildPack, PackNotFound } from "@/lib/build";
+import { jsonError } from "@/lib/form";
+import { install, planInstall } from "@/lib/install";
+
+export const runtime = "nodejs";
+
+type Ctx = { params: Promise<{ id: string }> };
+
+/**
+ * POST with `{ dryRun: true }` to get the plan - which files would be written
+ * and what they would overwrite. The UI always shows that before writing.
+ */
+export async function POST(request: Request, { params }: Ctx) {
+  try {
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as {
+      dryRun?: boolean;
+    };
+    const { pack, files } = await buildPack(id);
+
+    const input = {
+      vendor: pack.vendor,
+      subfolder: pack.subfolder,
+      files,
+      writeMeta: true,
+    };
+
+    const plan = await planInstall(input);
+    if (body.dryRun !== false) return Response.json({ plan });
+
+    if (!plan.rootExists || !plan.rootWritable) {
+      return Response.json(
+        { error: plan.warnings.join(" ") || "Target folder is not writable." },
+        { status: 409 },
+      );
+    }
+
+    return Response.json({ plan, result: await install(input) });
+  } catch (err) {
+    return jsonError(err, err instanceof PackNotFound ? 404 : 500);
+  }
+}
