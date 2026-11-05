@@ -19,6 +19,12 @@ npm run dev
 
 Then open <http://localhost:4321>.
 
+Port already taken? `PORT=4322 npm run dev`. To free the default instead:
+
+```bash
+lsof -ti tcp:4321 | xargs kill
+```
+
 ## What it does
 
 1. **Pick a kit type** — Sample Kit, Kontakt Instrument, Plugin, or Maschine Group.
