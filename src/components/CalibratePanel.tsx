@@ -62,12 +62,11 @@ export function CalibratePanel({ onDone }: { onDone: () => void }) {
               <tr>
                 <th>File</th>
                 <th>This app uses</th>
-                <th>Actually found</th>
+                <th>Found in your libraries</th>
               </tr>
             </thead>
             <tbody>
               {result.observations.map((o) => {
-                const top = o.sizes[0];
                 const cls =
                   o.matchesSpec === null
                     ? "absent"
@@ -81,9 +80,18 @@ export function CalibratePanel({ onDone }: { onDone: () => void }) {
                       {o.expected ? `${o.expected.width}x${o.expected.height}` : "-"}
                     </td>
                     <td className={cls}>
-                      {top
-                        ? `${top.width}x${top.height} (in ${top.count} librar${top.count === 1 ? "y" : "ies"})`
-                        : "not present in any library"}
+                      {o.sizes.length === 0 ? (
+                        "not present in any library"
+                      ) : (
+                        /* Every distinct size, so a split distribution is visible
+                           rather than hidden behind the most common one. */
+                        o.sizes.map((s) => (
+                          <div key={`${s.width}x${s.height}`}>
+                            {s.width}x{s.height} &mdash; {s.count} of{" "}
+                            {result.libraries.length}
+                          </div>
+                        ))
+                      )}
                     </td>
                   </tr>
                 );
@@ -93,8 +101,8 @@ export function CalibratePanel({ onDone }: { onDone: () => void }) {
 
           {result.observations.some((o) => o.matchesSpec === false) && (
             <div className="note">
-              Some sizes differ from the built-in spec. Send me this table and I will
-              correct <code>src/lib/spec.ts</code> - the real libraries win.
+              Some sizes differ from the built-in spec. Your installed libraries are
+              the ground truth - update <code>src/lib/spec.ts</code> to match them.
             </div>
           )}
 

@@ -1,33 +1,52 @@
 # NI Resources image spec — working notes
 
-The authoritative version of the size table lives in `src/lib/spec.ts` and is
-summarised in the README. This file records where those numbers came from, what
-is still unverified, and what is left to build.
+The authoritative size table lives in `src/lib/spec.ts` and is summarised in the
+README. This file records where those numbers came from and what is left to build.
 
 ## Provenance
 
-Sizes for `MST_artwork`, `MST_logo`, `MST_plugin`, `VB_artwork`, `OSO_logo` and
-the NKS2 banners come from the published community documentation of the NKS
-format (PresetMagician's NKS reference, resoundlabs' Maschine custom-graphics
-guide, maschinetutorials.com, and NI Community NKS2 threads).
+The sizes are **calibrated against 626 Native Instruments libraries** installed
+on a real machine, read with the Calibrate feature. They are not taken from
+documentation.
 
-Native Instruments does not publish a public spec for third-party browser
-images, so none of these are vendor-confirmed. The **Calibrate** feature exists
-precisely because a real installed library is better evidence than any of the
-above — it reads the libraries on the machine and reports what they actually use.
+That matters, because the published community sources (PresetMagician's NKS
+reference, resoundlabs' Maschine custom-graphics guide, maschinetutorials.com,
+NI Community NKS2 threads) were wrong on four of the eight files:
 
-## Unverified
+| File | Docs said | Reality | Libraries agreeing |
+|---|---|---|---|
+| `MST_artwork.png` | 134x66 | 134x66 ✓ | 626 |
+| `MST_logo.png` | 240x96 | **240x196** | 626 |
+| `MST_plugin.png` | 190x75 | **127x70** | 69 |
+| `VB_artwork.png` | 96x47 | 96x47 ✓ | 627 |
+| `VB_logo.png` | *not documented* | **227x47** | 625 |
+| `OSO_logo.png` | 417x64 | **417x65** | 609 |
+| `NKS2_hardware_banner.webp` | 1280x212 | 1280x212 ✓ | 227 |
+| `NKS2_hardware_banner_1280x152.webp` | 1280x152 | 1280x152 ✓ | 137 |
 
-- **`VB_logo.png` dimensions.** Every source describes what this file does but
-  none give a size. `src/lib/spec.ts` marks it `unverified: true`, which surfaces
-  a badge in the UI. Calibrate against a real library and correct it.
+Native Instruments publishes no public spec for third-party browser images,
+which is presumably why the community numbers drifted. A real installed library
+is better evidence than any write-up, so Calibrate is the mechanism of record —
+re-run it on any machine to re-check against the libraries installed there.
+
+### Notes on the counts
+
+`MST_plugin.png` appears in only 69 libraries against ~626 for the rest. That is
+expected: it is the plugin-chain strip image, so only plugin vendors ship it.
+69 is the plugin subset, not a weak signal.
+
+The small spread between 625, 626 and 627 is just a handful of libraries
+shipping an incomplete image set.
+
+## Still unverified
+
 - **`.meta` contents.** The format is opaque and community guidance is that it
-  is not meant to be edited — only the filename has to match. The app therefore
-  copies a harvested real `.meta` when one is available, and writes an empty file
+  is not meant to be edited — only the filename has to match. The app copies a
+  harvested real `.meta` when one is available, and writes an empty file
   otherwise (which is what the manual tutorials do).
 - **`color.json`.** Referenced in one source as setting the background colour
   behind a transparent `VB_logo`. Not implemented; worth checking whether real
-  libraries ship one.
+  libraries ship one — a quick `find` over NI Resources would settle it.
 
 ## Not built yet — sample tagging
 

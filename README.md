@@ -40,18 +40,19 @@ re-install them later.
 | File | Size | Where it shows |
 |---|---|---|
 | `MST_artwork.png` | 134 x 66 | Maschine Studio / MK3 hardware plugin browser |
-| `MST_logo.png` | 240 x 96 | Maschine Studio / MK3 hardware preset browser |
-| `MST_plugin.png` | 190 x 75 | Plugin chain strip on Maschine hardware |
+| `MST_logo.png` | 240 x 196 | Maschine Studio / MK3 hardware preset browser |
+| `MST_plugin.png` | 127 x 70 | Plugin chain strip on Maschine hardware |
 | `VB_artwork.png` | 96 x 47 | Software visual browser tile |
-| `VB_logo.png` | 240 x 96 † | Software browser, after selecting the plugin in the filter list |
-| `OSO_logo.png` | 417 x 64 | Wide logo lockup in the NI browser chrome |
+| `VB_logo.png` | 227 x 47 | Software browser, after selecting the plugin in the filter list |
+| `OSO_logo.png` | 417 x 65 | Wide logo lockup in the NI browser chrome |
 | `NKS2_hardware_banner.webp` | 1280 x 212 | NKS2 banner on MK3 / S-series MK3 |
 | `NKS2_hardware_banner_1280x152.webp` | 1280 x 152 | Shorter NKS2 banner variant |
 | `<Folder>.meta` | — | Sits beside the folder, named to match it exactly |
 
-† **Not verified.** `VB_logo.png`'s dimensions are the one thing not documented
-in any public source, so this is a best guess and the UI flags it. Use
-**Calibrate** (below) to replace it with the real value.
+These are **calibrated against 626 real NI libraries**, not copied from
+documentation. The calibration corrected four sizes the published community
+docs had wrong — `MST_logo` (was listed as 240x96), `MST_plugin` (190x75),
+`OSO_logo` (417x64), and `VB_logo`, whose size no public source gave at all.
 
 ## Calibrate
 
@@ -62,8 +63,12 @@ file to use as the template for your packs.
 
 Run it once before your first install. Without a harvested template, the `.meta`
 is written empty — which the manual tutorials say works, but a real one is
-better. If Calibrate reports a size that differs from the table above, the real
-library wins: update `src/lib/spec.ts`.
+better.
+
+The table shows every distinct size found per file, with how many libraries use
+each, so a split distribution is visible rather than averaged away. If anything
+disagrees with the built-in spec, your libraries are the ground truth: update
+`src/lib/spec.ts` to match.
 
 ## Where things go
 

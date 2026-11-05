@@ -91,17 +91,47 @@ test("renderPack routes logo files to the logo source when present", async () =>
     .png()
     .toBuffer();
 
-  const files = await renderPack({ artwork, logo }, specsFor({ nks2: true }), {
+  const withLogo = await renderPack({ artwork, logo }, specsFor({ nks2: true }), {
     padding: 0,
     background: null,
   });
-  assert.equal(files.length, IMAGE_SPECS.length);
+  assert.equal(withLogo.length, IMAGE_SPECS.length);
 
-  const logoSpec = IMAGE_SPECS.find((s) => s.source === "logo")!;
-  const rendered = files.find((f) => f.file === logoSpec.file)!;
-  const { dominant } = await sharp(rendered.buffer).stats();
-  // The green logo, not the orange artwork, should dominate.
-  assert.ok(dominant.g > dominant.r, `expected green-dominant, got ${JSON.stringify(dominant)}`);
+  const withoutLogo = await renderPack(
+    { artwork, logo: null },
+    specsFor({ nks2: true }),
+    { padding: 0, background: null },
+  );
+
+  /**
+   * Channel means rather than `dominant`: a logo is fitted with padding, so the
+   * padded canvas can out-vote the logo itself in a dominant-colour histogram.
+   * Means stay meaningful whatever the box's aspect ratio.
+   */
+  const greenness = async (buffer: Buffer) => {
+    const { channels } = await sharp(buffer).stats();
+    return channels[1].mean - channels[0].mean;
+  };
+
+  for (const spec of IMAGE_SPECS) {
+    const a = withLogo.find((f) => f.file === spec.file)!;
+    const b = withoutLogo.find((f) => f.file === spec.file)!;
+    if (spec.source === "logo") {
+      assert.ok(
+        (await greenness(a.buffer)) > 0,
+        `${spec.file} should come from the green logo`,
+      );
+      assert.ok(
+        (await greenness(b.buffer)) < 0,
+        `${spec.file} should fall back to the orange artwork`,
+      );
+    } else {
+      assert.ok(
+        (await greenness(a.buffer)) < 0,
+        `${spec.file} should always come from the orange artwork`,
+      );
+    }
+  }
 });
 
 test("folder names reject the characters NI disallows", () => {

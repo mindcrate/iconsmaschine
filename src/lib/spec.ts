@@ -1,11 +1,20 @@
 /**
  * The NI Resources image spec.
  *
- * Sizes for the MST_*, VB_artwork, OSO and NKS2 banner files are taken from the
- * published community documentation of the NKS format. `VB_logo.png` is the one
- * file whose dimensions are not documented anywhere public, so it ships as a
- * best guess flagged `unverified` - run the calibrator (src/lib/calibrate.ts)
- * against a real Native Instruments library to replace it with the true value.
+ * These sizes are calibrated against 626 Native Instruments libraries installed
+ * on a real machine, not taken from documentation. That calibration corrected
+ * four values the published community docs had wrong:
+ *
+ *   MST_logo.png    240x96  -> 240x196   (626 libraries)
+ *   MST_plugin.png  190x75  -> 127x70    (69 libraries)
+ *   VB_logo.png     unknown -> 227x47    (625 libraries)
+ *   OSO_logo.png    417x64  -> 417x65    (609 libraries)
+ *
+ * MST_plugin.png appears in far fewer libraries than the rest, since only
+ * plugin vendors ship it - 69 is the plugin subset, not a weak signal.
+ *
+ * Re-run the calibrator (src/lib/calibrate.ts) on any machine to re-check these
+ * against the libraries installed there.
  */
 
 export type Fit = "cover" | "contain";
@@ -22,7 +31,7 @@ export interface ImageSpec {
   source: "artwork" | "logo";
   /** Shown in the UI so you know what each file actually affects. */
   description: string;
-  /** True when the dimensions are a best guess rather than documented. */
+  /** True when the dimensions are a best guess rather than calibrated. */
   unverified?: boolean;
   /** Not written unless the pack opts into NKS2. */
   nks2?: boolean;
@@ -41,7 +50,7 @@ export const IMAGE_SPECS: ImageSpec[] = [
   {
     file: "MST_logo.png",
     width: 240,
-    height: 96,
+    height: 196,
     format: "png",
     fit: "contain",
     source: "logo",
@@ -49,8 +58,8 @@ export const IMAGE_SPECS: ImageSpec[] = [
   },
   {
     file: "MST_plugin.png",
-    width: 190,
-    height: 75,
+    width: 127,
+    height: 70,
     format: "png",
     fit: "contain",
     source: "logo",
@@ -67,19 +76,18 @@ export const IMAGE_SPECS: ImageSpec[] = [
   },
   {
     file: "VB_logo.png",
-    width: 240,
-    height: 96,
+    width: 227,
+    height: 47,
     format: "png",
     fit: "contain",
     source: "logo",
     description:
       "Software browser, after selecting the plugin in the filter list.",
-    unverified: true,
   },
   {
     file: "OSO_logo.png",
     width: 417,
-    height: 64,
+    height: 65,
     format: "png",
     fit: "contain",
     source: "logo",
