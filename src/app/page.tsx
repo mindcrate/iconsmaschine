@@ -248,7 +248,8 @@ export default function Page() {
           <p className="hint">
             Names must match <strong>exactly</strong> what Maschine shows. Folders
             on disk are lowercased, the way NI stores them; the name you type here
-            is what goes inside the .meta and JSON files.
+            is what goes inside the .meta and JSON files. Plugins nest under the
+            vendor in both trees; expansions sit flat.
           </p>
 
           <div className="row">
@@ -327,7 +328,13 @@ export default function Page() {
 
           {product && !productError && status && (
             <div className="path-preview">
-              {status.niImageDir}/<b>{product.trim().toLowerCase()}</b>/
+              {status.niImageDir}/
+              <b>
+                {kitInfo.usesDistDb && vendor && !vendorError
+                  ? `${vendor.trim().toLowerCase()}/${product.trim().toLowerCase()}`
+                  : product.trim().toLowerCase()}
+              </b>
+              /
             </div>
           )}
           {kitInfo.usesDistDb && product && vendor && !productError && !vendorError && status && (

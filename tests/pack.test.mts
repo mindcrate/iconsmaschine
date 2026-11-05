@@ -60,9 +60,9 @@ for n in sorted(z.namelist()):
     "dist_database/futureaudioworkshop/sublab/color.json",
     "dist_database/futureaudioworkshop/sublab/shortname.json",
     "dist_database/futureaudioworkshop/sublab/sublab.meta",
-    "image/sublab/MST_artwork.png",
-    "image/sublab/VB_artwork.png",
-    "image/sublab/sublab.meta",
+    "image/futureaudioworkshop/sublab/MST_artwork.png",
+    "image/futureaudioworkshop/sublab/VB_artwork.png",
+    "image/futureaudioworkshop/sublab/sublab.meta",
   ]);
 });
 

@@ -97,16 +97,17 @@ function buildZip(entries: Entry[]): Buffer {
  */
 export function zipPack(input: ZipInput): Buffer {
   const productFolder = folderName(input.product);
+  // Plugins nest in image/ the same way they do in dist_database.
+  const imageRel = input.distDb
+    ? path.join("image", folderName(input.distDb.vendor), productFolder)
+    : path.join("image", productFolder);
   const entries: Entry[] = [];
 
   for (const f of input.files) {
-    entries.push({
-      name: path.join("image", productFolder, f.file),
-      data: f.buffer,
-    });
+    entries.push({ name: path.join(imageRel, f.file), data: f.buffer });
   }
   entries.push({
-    name: path.join("image", productFolder, `${productFolder}.meta`),
+    name: path.join(imageRel, `${productFolder}.meta`),
     data: metaBuffer({ name: input.product, type: "image" }),
   });
 

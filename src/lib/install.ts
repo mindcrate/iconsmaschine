@@ -49,12 +49,21 @@ async function statOrNull(p: string) {
 /**
  * The full file set for a pack, across both trees.
  *
- * `image/` is flat - one folder per product, named after the product, matching
- * how the 547 installed libraries are laid out. `dist_database/` nests by
- * vendor, matching dist_database/futureaudioworkshop/sublab/.
+ * Nesting is NOT uniform. Confirmed against an installed system:
+ *
+ *   image/futureaudioworkshop/sublab/   plugin  -> nested, mirrors dist_database
+ *   image/amplified funk/               expansion -> flat, product only
+ *
+ * So a plugin's image folder mirrors its dist_database path, while expansions
+ * and Kontakt libraries sit flat at the top level.
  */
 function buildFileSet(input: InstallInput) {
   const productFolder = folderName(input.product);
+
+  // A dist_database entry means a plugin, and plugins nest in image/ as well.
+  const imageSegments = input.distDb
+    ? [folderName(input.distDb.vendor), productFolder]
+    : [productFolder];
 
   const imageFiles = [
     ...input.files.map((f) => ({ file: f.file, buffer: f.buffer })),
@@ -66,7 +75,7 @@ function buildFileSet(input: InstallInput) {
 
   const distDbFiles = input.distDb ? buildDistDbFiles(input.distDb) : [];
 
-  return { productFolder, imageFiles, distDbFiles };
+  return { productFolder, imageSegments, imageFiles, distDbFiles };
 }
 
 export async function planInstall(input: InstallInput): Promise<InstallPlan> {
@@ -74,8 +83,9 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
   const distDbRoot = niDistDatabaseDir();
   const warnings: string[] = [];
 
-  const { productFolder, imageFiles, distDbFiles } = buildFileSet(input);
-  const imageDir = safeJoin(imageRoot, productFolder);
+  const { productFolder, imageSegments, imageFiles, distDbFiles } =
+    buildFileSet(input);
+  const imageDir = safeJoin(imageRoot, ...imageSegments);
   const distDbDir = input.distDb
     ? safeJoin(distDbRoot, folderName(input.distDb.vendor), productFolder)
     : null;
@@ -110,10 +120,11 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
   }
 
   const writes: PlannedWrite[] = [];
+  const imageRel = path.join(...imageSegments);
   for (const f of imageFiles) {
     writes.push({
       tree: "image",
-      file: path.join(productFolder, f.file),
+      file: path.join(imageRel, f.file),
       bytes: f.buffer.length,
       existing: await statOrNull(path.join(imageDir, f.file)),
     });
@@ -151,15 +162,16 @@ export interface InstallResult {
 export async function install(input: InstallInput): Promise<InstallResult> {
   const imageRoot = niImageDir();
   const distDbRoot = niDistDatabaseDir();
-  const { productFolder, imageFiles, distDbFiles } = buildFileSet(input);
+  const { productFolder, imageSegments, imageFiles, distDbFiles } =
+    buildFileSet(input);
 
-  const imageDir = safeJoin(imageRoot, productFolder);
+  const imageDir = safeJoin(imageRoot, ...imageSegments);
   await fs.mkdir(imageDir, { recursive: true });
 
   const written: string[] = [];
   for (const f of imageFiles) {
     await fs.writeFile(safeJoin(imageDir, f.file), f.buffer);
-    written.push(path.join("image", productFolder, f.file));
+    written.push(path.join("image", ...imageSegments, f.file));
   }
 
   let distDbDir: string | null = null;

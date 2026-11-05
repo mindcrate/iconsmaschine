@@ -60,7 +60,7 @@ test("an image-only pack writes artwork plus a generated image .meta", async (t)
   assert.equal(await fs.readFile(path.join(dir, "MST_artwork.png"), "utf8"), "artwork");
 });
 
-test("a plugin pack writes both trees, nesting dist_database by vendor", async (t) => {
+test("a plugin pack nests by vendor in BOTH trees", async (t) => {
   const { image, distDb } = await tempRoot(t);
   const { install } = await import("../src/lib/install.ts");
 
@@ -71,19 +71,21 @@ test("a plugin pack writes both trees, nesting dist_database by vendor", async (
     distDb: DISTDB,
   });
 
-  // image/ is FLAT - product only, no vendor folder.
-  await fs.access(path.join(image, "sublab", "MST_artwork.png"));
-  await fs.access(path.join(image, "sublab", "sublab.meta"));
+  // Confirmed against a real system: image/futureaudioworkshop/sublab/
+  const img = path.join(image, "futureaudioworkshop", "sublab");
+  await fs.access(path.join(img, "MST_artwork.png"));
+  await fs.access(path.join(img, "sublab.meta"));
+
+  // A plugin must NOT land flat at the top of image/.
   assert.equal(
     await fs
-      .access(path.join(image, "futureaudioworkshop"))
+      .access(path.join(image, "sublab"))
       .then(() => true)
       .catch(() => false),
     false,
-    "image/ must not be nested by vendor",
+    "plugin image folder must be nested under the vendor",
   );
 
-  // dist_database/ IS nested.
   const dd = path.join(distDb, "futureaudioworkshop", "sublab");
   for (const f of ["categories.json", "color.json", "shortname.json", "sublab.meta"]) {
     await fs.access(path.join(dd, f));
@@ -93,12 +95,23 @@ test("a plugin pack writes both trees, nesting dist_database by vendor", async (
   assert.equal(cats.Vendor, "FutureAudioWorkshop");
   assert.equal(cats.CategoryDB[0].Categories[0], "Synthesizers");
 
-  const meta = await fs.readFile(path.join(dd, "sublab.meta"), "utf8");
-  assert.ok(meta.includes("<vendor>FutureAudioWorkshop</vendor>"));
-  assert.ok(meta.includes("<type>dist_database</type>"));
-
   assert.equal(result.written.length, 7);
   assert.ok(result.distDbDir);
+});
+
+test("an expansion stays flat in image/, matching 'amplified funk'", async (t) => {
+  const { image } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+
+  await install({
+    product: "Amplified Funk",
+    vendor: "",
+    files,
+    distDb: null,
+  });
+
+  await fs.access(path.join(image, "amplified funk", "MST_artwork.png"));
+  await fs.access(path.join(image, "amplified funk", "amplified funk.meta"));
 });
 
 test("the two .meta files are not interchangeable", async (t) => {
@@ -111,7 +124,10 @@ test("the two .meta files are not interchangeable", async (t) => {
     distDb: DISTDB,
   });
 
-  const imageMeta = await fs.readFile(path.join(image, "sublab", "sublab.meta"), "utf8");
+  const imageMeta = await fs.readFile(
+    path.join(image, "futureaudioworkshop", "sublab", "sublab.meta"),
+    "utf8",
+  );
   const ddMeta = await fs.readFile(
     path.join(distDb, "futureaudioworkshop", "sublab", "sublab.meta"),
     "utf8",

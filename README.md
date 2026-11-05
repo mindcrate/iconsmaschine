@@ -85,16 +85,22 @@ nothing.
 
 ```
 /Users/Shared/NI Resources/
-  image/<product>/                      <- FLAT, one folder per product
+  image/<vendor>/<product>/             <- PLUGINS nest by vendor
+  image/<product>/                      <- EXPANSIONS sit flat
       MST_*.png  VB_*.png  OSO_logo.png  NKS2_*.webp
       <product>.meta                    XML: name + type "image"
 
-  dist_database/<vendor>/<product>/     <- NESTED by vendor, plugins only
+  dist_database/<vendor>/<product>/     <- plugins only
       categories.json                   vendor, product, file type, categories
       color.json                        { "VB_bgcolor" : "f4b021" }
       shortname.json                    one short name per hardware generation
       <product>.meta                    XML: vendor + name + type "dist_database"
 ```
+
+Nesting is not uniform, and both shapes exist on a real system:
+`image/futureaudioworkshop/sublab/` for the SubLab plugin, `image/amplified funk/`
+for the Amplified Funk expansion. A plugin's image path mirrors its
+dist_database path.
 
 Folder names are **lowercased**, matching how NI stores them (`amplified funk`,
 `futureaudioworkshop/sublab`). The properly cased name goes inside the `.meta`
@@ -114,10 +120,10 @@ pick these up.
 
 | Kit type | image/ | dist_database/ |
 |---|---|---|
-| Plugin (effect or instrument) | yes | yes |
-| Sample Kit / Expansion | yes | no |
-| Kontakt Instrument | yes | no |
-| Maschine Group | yes | no |
+| Plugin (effect or instrument) | `<vendor>/<product>/` | `<vendor>/<product>/` |
+| Sample Kit / Expansion | `<product>/` | — |
+| Kontakt Instrument | `<product>/` | — |
+| Maschine Group | `<product>/` | — |
 
 That mirrors the installed set: 7 plugin vendors in `dist_database` against 547
 folders in `image`.
