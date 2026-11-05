@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp, { type Sharp } from "sharp";
 import type { ImageSpec } from "./spec";
 
 export interface RenderOptions {
@@ -34,7 +34,7 @@ export async function renderOne(
   const background = parseBackground(opts.background);
   const pad = Math.min(Math.max(opts.padding ?? 0, 0), 0.4);
 
-  let pipeline: sharp.Sharp;
+  let pipeline: Sharp;
 
   if (spec.fit === "cover") {
     pipeline = sharp(source).resize(spec.width, spec.height, {

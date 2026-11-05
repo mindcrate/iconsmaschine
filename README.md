@@ -9,6 +9,8 @@ round-trip. It runs on your own machine and writes to your own disk.
 
 ## Run it
 
+Needs **Node 22 or newer** (`node -v` to check; `brew install node` if not).
+
 ```bash
 npm install
 cp .env.example .env.local     # optional, only needed for AI artwork
