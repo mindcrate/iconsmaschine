@@ -6,6 +6,7 @@ import { CalibratePanel } from "@/components/CalibratePanel";
 import { InstallPanel } from "@/components/InstallPanel";
 import { LibraryPanel } from "@/components/LibraryPanel";
 import { CropEditor } from "@/components/CropEditor";
+import { KitPicker } from "@/components/KitPicker";
 import { PresetEditor } from "@/components/PresetEditor";
 import { PreviewGrid } from "@/components/PreviewGrid";
 import type { Crop, CropMap } from "@/lib/crop";
@@ -349,6 +350,17 @@ export default function Page() {
             is what goes inside the .meta and JSON files. Plugins nest under the
             vendor in both trees; expansions sit flat.
           </p>
+
+          {!kitInfo.usesDistDb && (
+            <KitPicker
+              current={product}
+              onPick={(k) => {
+                setProduct(k.name);
+                setName(k.name);
+                resetOutputs();
+              }}
+            />
+          )}
 
           <div className="row">
             {kitInfo.usesDistDb && (

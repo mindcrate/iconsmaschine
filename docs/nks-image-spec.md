@@ -307,30 +307,45 @@ cross-referencing every image folder against every bank chain, and lists the
 chains that hold sounds but have no folder - i.e. exactly the kits with no
 artwork, and the folder name each one needs.
 
-### First run: hypothesis not confirmed
+### Confirmed by correlation, not by string matching
 
-Against a real system (551 image folders, 2,583 bank chains):
+Loosening the comparison changed nothing - 799/799/799 by bank chain and
+1178/1178/1178 by vendor, with zero pairs appearing only after normalisation.
+So punctuation was never the issue, and the two mechanisms are not competing.
 
-| | exact lowercase match |
+What settled it was the browser itself. Of the Groups visible on one screen,
+exactly five showed the generic plug icon instead of artwork:
+
+```
+Backyard Jams · Body Mechanik · Bumpin Flava · Indigo Dust · Mother Board
+```
+
+Those are precisely the five that `match-kits.sh` reported as having no image
+folder. Every other Group on screen - Arcane Attic, Astral Flutter, Caribbean
+C., Chromatic F., Conant Gardens and the rest - had both artwork and a matching
+folder. A perfect correlation across the whole visible set.
+
+### The rule
+
+| Content | Resolves artwork from |
 |---|---|
-| chains matching a folder by **entry1** | 799 |
-| chains matching a folder by **vendor** | 1,178 |
+| has a vendor (plugins, vendor libraries) | `image/<vendor>/<product>/` plus a dist_database entry |
+| no vendor (Expansions, user kits) | `image/<bank chain entry1>/`, lowercased, flat |
 
-Vendor matched *more*, so "artwork resolves by bank chain" is not established.
-But the comparison was too strict to settle it either way:
+Maschine's `"Other"` is a catch-all rather than a real vendor, so content tagged
+with it is treated as vendor-less.
 
-- `abbey road 60s drummer` matched; `abbey road 60s drums` matched nothing -
-  the same product under two folder spellings.
-- Official Expansions that certainly ship with artwork (Bumpin Flava, Backyard
-  Jams, Body Mechanik, Neo Boogie, Indigo Dust) came back as having **no image
-  folder**, which is not credible. Far more likely the folder is
-  `bumpin' flava` and the chain is `Bumpin Flava`, so an exact comparison
-  misses it.
-- 386 of 551 folders matched nothing at all. Some of those are artwork for
-  content not installed, which NI ships regardless, but not 70% of them.
+Names match **exactly** once lowercased - no punctuation stripping, no
+whitespace collapsing. `abbey road 60s drummer` and `abbey road 60s drums` are
+genuinely different folders.
 
-So `match-kits.sh` now reports match rates at three strictnesses - exact,
-punctuation-insensitive, and ignoring spaces entirely - and prints the pairs
-that only appear once names are normalised. Those pairs show the rule NI is
-actually applying. Whichever column jumps tells us both the right key and the
-right normalisation.
+### What this means for the app
+
+No Maschine file needs editing. A kit's artwork is a folder name, and the names
+come from `k_bank_chain.entry1`. So the app reads them directly
+(`src/lib/kits.ts`) and lists your kits with sound counts and an artwork flag,
+missing ones first - you pick rather than type, which removes the single most
+common cause of artwork never appearing.
+
+Several chain rows can share a name (different sub-banks), so they are
+collapsed to one kit per folder with the sound counts added up.

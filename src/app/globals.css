@@ -442,3 +442,41 @@ table.calib td.absent { color: var(--muted); }
   border-top: 1px solid var(--line);
   padding-top: 18px;
 }
+
+.kit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px;
+  background: #111;
+}
+.kit-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1.4fr auto;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 6px 9px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.kit-row:hover { background: var(--panel-2); border-color: var(--line); }
+.kit-row[aria-pressed="true"] { border-color: var(--accent); background: #2b2115; }
+.kit-row .kname { font-size: 13px; font-weight: 600; }
+.kit-row .kmeta {
+  color: var(--muted); font-family: var(--mono); font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.kbadge {
+  font-size: 10px; border-radius: 3px; padding: 1px 6px;
+  color: var(--accent); border: 1px solid var(--accent-dim); white-space: nowrap;
+}
+.kbadge.has { color: var(--ok); border-color: #2c5138; }

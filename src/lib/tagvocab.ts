@@ -1,8 +1,12 @@
-import fs from "node:fs";
 import fsp from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { iconmaschineHome } from "./paths";
+import {
+  findMaschineDb,
+  openMaschineDb,
+  str as asStr,
+  type MaschineDb,
+} from "./maschinedb";
 
 /**
  * The Types, Characters and bank chains Maschine itself uses.
@@ -55,37 +59,8 @@ const FALLBACK_CHARACTERS = [
   "Dry", "Layered", "Processed", "Sample-based", "Synthetic", "Warm", "Wet",
 ];
 
-function candidateDbPaths(): string[] {
-  const mac = path.join(os.homedir(), "Library", "Application Support", "Native Instruments");
-  const win = process.env.LOCALAPPDATA
-    ? path.join(process.env.LOCALAPPDATA, "Native Instruments")
-    : "";
-  const names = ["Maschine 2", "Komplete Kontrol", "Kontakt 8", "Kontakt 7"];
-  const out: string[] = [];
-  for (const root of [mac, win]) {
-    if (!root) continue;
-    for (const n of names) out.push(path.join(root, n, "komplete.db3"));
-  }
-  return out;
-}
-
-function findDb(): string | null {
-  const override = process.env.MASCHINE_DB_PATH;
-  if (override && fs.existsSync(override)) return override;
-  return candidateDbPaths().find((p) => fs.existsSync(p)) ?? null;
-}
-
-interface Row {
-  [key: string]: unknown;
-}
-interface Db {
-  prepare: (sql: string) => { all: (...args: never[]) => Row[] };
-  close: () => void;
-}
-
-function str(v: unknown): string {
-  return typeof v === "string" ? v.trim() : "";
-}
+type Db = MaschineDb;
+const str = asStr;
 
 function readTypes(db: Db): string[][] {
   const seen = new Set<string>();
@@ -126,30 +101,6 @@ function readBankChains(db: Db): BankChain[] {
   );
 }
 
-async function openDb(dbPath: string): Promise<{ db: Db; source: "database" | "database-copy"; cleanup: () => Promise<void> }> {
-  const { DatabaseSync } = await import("node:sqlite");
-
-  // Preferred: read-only, in place. No copy, no write possible. The option is
-  // accepted at runtime even where the bundled typings omit it.
-  try {
-    const db = new DatabaseSync(dbPath, {
-      readOnly: true,
-    } as unknown as undefined) as unknown as Db;
-    return { db, source: "database", cleanup: async () => {} };
-  } catch {
-    // A lock or an in-flight WAL: fall back to reading a snapshot.
-    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "iconmaschine-db-"));
-    const copy = path.join(dir, "snapshot.db3");
-    await fsp.copyFile(dbPath, copy);
-    const db = new DatabaseSync(copy) as unknown as Db;
-    return {
-      db,
-      source: "database-copy",
-      cleanup: () => fsp.rm(dir, { recursive: true, force: true }),
-    };
-  }
-}
-
 function cachePath(): string {
   return path.join(iconmaschineHome(), "cache", "tagvocab.json");
 }
@@ -169,7 +120,7 @@ async function cacheKey(dbPath: string): Promise<string> {
 export async function readTagVocabulary(
   opts: { refresh?: boolean } = {},
 ): Promise<TagVocabulary> {
-  const dbPath = findDb();
+  const dbPath = findMaschineDb();
   if (!dbPath) {
     return {
       types: FALLBACK_TYPES,
@@ -199,7 +150,7 @@ export async function readTagVocabulary(
 
   let cleanup: (() => Promise<void>) | null = null;
   try {
-    const opened = await openDb(dbPath);
+    const opened = await openMaschineDb(dbPath);
     cleanup = opened.cleanup;
     try {
       const types = readTypes(opened.db);
