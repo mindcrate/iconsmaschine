@@ -46,44 +46,61 @@ shipping an incomplete image set.
   third-party image spec and nothing in this app needs to emit one. Treat any
   write-up that mentions it as stale.
 
-## Still unverified — and currently blocking
+## What this app is still missing (from the walkthrough transcript)
 
-Installing the images alone does **not** make a third-party *sample kit* show up
-with artwork. Two things beyond this app's current scope appear to be required.
+Maschine needs **two** folders per plugin, not one. This app currently builds
+only the first:
 
-### 1. The `.meta` may carry the library name inside it
+```
+NI Resources/image/<Vendor>/<Plugin>/
+    MST_*.png, VB_*.png, OSO_logo.png, NKS2_*.webp
+    <Plugin>.meta          <- plain text: name, then the word "image"
 
-Community guidance for the manual method says to rename the `.meta` **and edit
-the name inside it with a text editor**. If true, copying a harvested template
-verbatim writes the donor library's name into every pack.
+NI Resources/dist_database/<Vendor>/<Plugin>/
+    categories.json        <- vendor, product, file type, category
+    color.json             <- browser background colour, hex
+    shortname.json         <- short name shown on hardware
+    <Plugin>.meta          <- plain text: vendor, name, then "dist_database"
+```
 
-The app now detects this: Calibrate records which library the template came
-from, and the install plan warns if that name appears in the template bytes.
-It does not rewrite the name, because the format may be length-prefixed and a
-naive substitution would corrupt it.
+So `color.json` does exist after all — in `dist_database`, not `image`. The
+earlier `find` that came back empty was looking in the wrong place (and may also
+mean `dist_database` does not exist on that machine yet).
 
-`scripts/inspect-ni.sh` dumps a real `.meta` so the format can be settled.
+### The `.meta` files are plain text, and the two differ
 
-### 2. The content must be tagged with a matching Vendor property
+Both are UTF-8 plain text. The image one carries the plugin name and the literal
+word `image`; the dist_database one carries the **vendor** as well and ends with
+`dist_database`. The trailing word names the folder the file belongs to.
 
-This is the bigger one. The images resolve by **Vendor**, not by folder name
-alone: the sounds/groups must carry a Vendor property equal to the folder and
-`.meta` name. For NI-approved Kontakt libraries and plugins that vendor comes
-baked in, which is why those work with images alone. User sample kits have no
-vendor, so nothing resolves to the artwork.
+This confirms that copying a harvested `.meta` verbatim is wrong on two counts:
+it carries the donor's name, and an image-folder `.meta` is not interchangeable
+with a dist_database one. The app warns about the first; neither is generated
+correctly yet.
 
-Reported knock-on effects, all unconfirmed:
+### Presets must exist, and the vendor must match
 
-- Kits only appear in the browser's kit section at all if they are tagged.
-- Some users restored missing artwork by setting the vendor to Native
-  Instruments, which is a workaround rather than a fix.
-- `categories.json` reportedly holds plugin categories and a browser background
-  colour, but the real browser data lives in a `komplete.db3` SQLite database
-  under Application Support. **That database is managed by Maschine and must not
-  be edited directly.**
+Artwork attaches to *content*, not to an empty folder. A preset has to be saved
+into `~/Documents/Native Instruments/User Content/<Vendor>/<Plugin>/`, and the
+preset's **Vendor** property (browser → Edit → properties) must equal the folder
+name exactly — `iZotope`, not `iZotope Inc`.
 
-This makes sample tagging a prerequisite for sample kits, not an optional
-phase 2. Plugin and Kontakt packs are unaffected.
+### Known quirks from the walkthrough
+
+- Quit and relaunch Maschine. Rescan alone often does not pick changes up.
+- If artwork shows but the category reads "Other", the vendor does not match.
+- Some plugins only resolve with the vendor set to `Native Instruments`, in
+  which case `categories.json` and the dist_database `.meta` must say that too.
+- If the name resolves but artwork does not, moving the plugin's image folder
+  out of its vendor folder to the top level has been reported to fix it — so the
+  nesting is not always required on the image side.
+- The real browser data lives in `komplete.db3` under Application Support.
+  **Maschine manages it; do not edit it directly.**
+
+### Exact formats still unknown
+
+The JSON key names and the precise `.meta` layout must be read from real factory
+entries rather than guessed. `scripts/inspect-ni.sh` dumps them verbatim.
 
 ## Not built yet — sample tagging
 
