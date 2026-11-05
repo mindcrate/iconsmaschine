@@ -38,15 +38,21 @@ expected: it is the plugin-chain strip image, so only plugin vendors ship it.
 The small spread between 625, 626 and 627 is just a handful of libraries
 shipping an incomplete image set.
 
+## Settled
+
+- **`color.json` does not exist.** One source described it as setting the
+  background colour behind a transparent `VB_logo`. A `find` for it across all
+  626 installed libraries returned zero matches, so it is not part of the
+  third-party image spec and nothing in this app needs to emit one. Treat any
+  write-up that mentions it as stale.
+
 ## Still unverified
 
 - **`.meta` contents.** The format is opaque and community guidance is that it
   is not meant to be edited — only the filename has to match. The app copies a
   harvested real `.meta` when one is available, and writes an empty file
-  otherwise (which is what the manual tutorials do).
-- **`color.json`.** Referenced in one source as setting the background colour
-  behind a transparent `VB_logo`. Not implemented; worth checking whether real
-  libraries ship one — a quick `find` over NI Resources would settle it.
+  otherwise (which is what the manual tutorials do). This is handled in
+  practice, so it only matters if a pack ever fails to appear in Maschine.
 
 ## Not built yet — sample tagging
 
