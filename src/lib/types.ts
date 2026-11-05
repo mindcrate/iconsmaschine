@@ -21,6 +21,7 @@ export interface AppStatus {
   rootWritable: boolean;
   home: string;
   hasOpenAiKey: boolean;
+  hasSerpKey: boolean;
   distDbDir: string;
   distDbExists: boolean;
   platform: string;

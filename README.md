@@ -13,11 +13,19 @@ Needs **Node 22 or newer** (`node -v` to check; `brew install node` if not).
 
 ```bash
 npm install
-cp .env.example .env.local     # optional, only needed for AI artwork
+cp .env.example .env.local     # optional - see keys below
 npm run dev
 ```
 
 Then open <http://localhost:4321>.
+
+Both keys are optional; uploading an image always works, and any tab that needs
+a key says so.
+
+| Key in `.env.local` | Enables |
+|---|---|
+| `OPENAI_API_KEY` | the "Generate with AI" tab |
+| `SERPAPI_API_KEY` | the "Search for a logo" tab ([serpapi.com](https://serpapi.com), free tier is ~100 searches/month) |
 
 Port already taken? `PORT=4322 npm run dev`. To free the default instead:
 
@@ -31,11 +39,15 @@ lsof -ti tcp:4321 | xargs kill
    This decides the folder shape.
 2. **Name the folder** — must match exactly what Maschine shows. The app rejects
    the special characters NI disallows and previews the resulting path.
-3. **Add artwork** — upload an image or generate one with the OpenAI image API.
+3. **Add artwork** — upload an image, generate one with the OpenAI image API,
+   or search Google Images for a logo (with a transparent-background filter).
    Optionally use a second image for the logo files.
 4. **Build** — every file is rendered at its exact spec size. Artwork files are
    cropped to fill; logo files are fitted whole so nothing is cut off.
-5. **Install** — shows exactly which files will be written and what they would
+5. **Adjust** — click any preview tile to open the crop editor: the frame is
+   locked to that file's exact output size, drag to pan and scroll to zoom,
+   with undo and reset.
+6. **Install** — shows exactly which files will be written and what they would
    overwrite, then writes them. Or download a `.zip` laid out the same way.
 
 Packs are saved to `~/.iconmaschine/packs` so you can reopen, re-render and

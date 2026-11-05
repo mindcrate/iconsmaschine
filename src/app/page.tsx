@@ -286,6 +286,9 @@ export default function Page() {
                 <span className={status.hasOpenAiKey ? "chip ok" : "chip"}>
                   {status.hasOpenAiKey ? "OpenAI key loaded" : "no OpenAI key"}
                 </span>
+                <span className={status.hasSerpKey ? "chip ok" : "chip"}>
+                  {status.hasSerpKey ? "SerpAPI key loaded" : "no SerpAPI key"}
+                </span>
                 <span className={status.distDbExists ? "chip ok" : "chip warn"}>
                   {status.distDbExists
                     ? "dist_database found"
@@ -556,6 +559,8 @@ export default function Page() {
             }}
             allowAi
             hasOpenAiKey={status?.hasOpenAiKey ?? false}
+            hasSerpKey={status?.hasSerpKey ?? false}
+            searchSeed={[vendor, product].filter(Boolean).join(" ")}
           />
 
           <div className="checkline" style={{ marginTop: 20 }}>
@@ -585,6 +590,8 @@ export default function Page() {
               }}
               allowAi
               hasOpenAiKey={status?.hasOpenAiKey ?? false}
+              hasSerpKey={status?.hasSerpKey ?? false}
+              searchSeed={[vendor, product].filter(Boolean).join(" ")}
             />
           )}
 

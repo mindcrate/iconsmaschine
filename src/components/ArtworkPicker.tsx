@@ -1,13 +1,22 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { dataUrlToBlob, postJson } from "@/lib/client";
+import { dataUrlToBlob, getJson, postJson } from "@/lib/client";
+
+interface ImageHit {
+  title: string;
+  thumbnail: string;
+  original: string;
+  width: number | null;
+  height: number | null;
+  source: string;
+}
 
 export interface ArtworkSource {
   /** Object URL or data URL for display. */
   preview: string;
   blob: Blob;
-  origin: "upload" | "ai";
+  origin: "upload" | "ai" | "search";
 }
 
 export function ArtworkPicker({
@@ -17,6 +26,8 @@ export function ArtworkPicker({
   onChange,
   allowAi,
   hasOpenAiKey,
+  hasSerpKey,
+  searchSeed,
 }: {
   label: string;
   hint: string;
@@ -24,8 +35,11 @@ export function ArtworkPicker({
   onChange: (source: ArtworkSource | null) => void;
   allowAi: boolean;
   hasOpenAiKey: boolean;
+  hasSerpKey: boolean;
+  /** Pre-fills the search box with the vendor / product being built. */
+  searchSeed?: string;
 }) {
-  const [tab, setTab] = useState<"upload" | "ai">("upload");
+  const [tab, setTab] = useState<"upload" | "ai" | "search">("upload");
   const [over, setOver] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState<"1024x1024" | "1536x1024">("1024x1024");
@@ -33,6 +47,51 @@ export function ArtworkPicker({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const [query, setQuery] = useState("");
+  const [transparentOnly, setTransparentOnly] = useState(true);
+  const [hits, setHits] = useState<ImageHit[] | null>(null);
+  const [picking, setPicking] = useState<string | null>(null);
+
+  async function search() {
+    setBusy(true);
+    setError(null);
+    try {
+      const q = (query || searchSeed || "").trim();
+      if (q.length < 2) throw new Error("Enter something to search for.");
+      const res = await getJson<{ results: ImageHit[] }>(
+        `/api/image-search?q=${encodeURIComponent(q)}&transparent=${transparentOnly}`,
+      );
+      setHits(res.results);
+      if (res.results.length === 0) {
+        setError(
+          transparentOnly
+            ? "Nothing found with a transparent background. Try unticking that."
+            : "Nothing found for that search.",
+        );
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pick(hit: ImageHit) {
+    setPicking(hit.original);
+    setError(null);
+    try {
+      const { dataUrl } = await postJson<{ dataUrl: string }>(
+        "/api/image-search",
+        { url: hit.original },
+      );
+      onChange({ preview: dataUrl, blob: dataUrlToBlob(dataUrl), origin: "search" });
+    } catch (err) {
+      setError(`Could not use that image: ${(err as Error).message}`);
+    } finally {
+      setPicking(null);
+    }
+  }
 
   function accept(file: File | undefined) {
     if (!file) return;
@@ -86,10 +145,92 @@ export function ArtworkPicker({
           >
             Generate with AI
           </button>
+          <button
+            role="tab"
+            aria-selected={tab === "search"}
+            onClick={() => setTab("search")}
+          >
+            Search for a logo
+          </button>
         </div>
       )}
 
-      {tab === "upload" || !allowAi ? (
+      {tab === "search" && allowAi ? (
+        <div>
+          {!hasSerpKey && (
+            <div className="note bad">
+              No <code>SERPAPI_API_KEY</code> in <code>.env.local</code>. Add one
+              and restart the app to search.
+            </div>
+          )}
+          <div className="row" style={{ alignItems: "flex-end" }}>
+            <div className="field" style={{ flex: "2 1 300px" }}>
+              <label>Search</label>
+              <input
+                type="text"
+                placeholder={searchSeed ? `${searchSeed} logo` : "Serum logo"}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void search();
+                }}
+              />
+            </div>
+            <div className="field" style={{ flex: "0 0 auto" }}>
+              <div className="checkline" style={{ marginBottom: 0 }}>
+                <input
+                  id={`trans-${label}`}
+                  type="checkbox"
+                  checked={transparentOnly}
+                  onChange={(e) => setTransparentOnly(e.target.checked)}
+                />
+                <label htmlFor={`trans-${label}`} style={{ margin: 0 }}>
+                  Transparent only
+                </label>
+              </div>
+            </div>
+            <div className="field" style={{ flex: "0 0 auto" }}>
+              <button
+                className="btn"
+                onClick={search}
+                disabled={busy || !hasSerpKey}
+              >
+                {busy ? <><span className="spinner" /> Searching…</> : "Search"}
+              </button>
+            </div>
+          </div>
+
+          {hits && hits.length > 0 && (
+            <div className="hit-grid">
+              {hits.map((h) => (
+                <button
+                  key={h.original}
+                  className="hit"
+                  onClick={() => pick(h)}
+                  disabled={picking !== null}
+                  title={`${h.title}\n${h.source}${h.width ? ` - ${h.width}x${h.height}` : ""}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={h.thumbnail} alt={h.title} />
+                  <span className="hit-meta">
+                    {picking === h.original
+                      ? "fetching…"
+                      : h.width
+                        ? `${h.width}x${h.height}`
+                        : h.source}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {hits && hits.length > 0 && (
+            <p className="hint" style={{ marginTop: 10 }}>
+              Results come from Google Images. Check you have the right to use an
+              image before shipping a pack built from it.
+            </p>
+          )}
+        </div>
+      ) : tab === "upload" || !allowAi ? (
         <div
           className={over ? "drop over" : "drop"}
           onClick={() => inputRef.current?.click()}
@@ -174,7 +315,12 @@ export function ArtworkPicker({
           <img src={value.preview} alt="Selected artwork" />
           <div>
             <div style={{ color: "var(--muted)", fontSize: 12 }}>
-              Source: {value.origin === "ai" ? "generated with AI" : "uploaded"}
+              Source:{" "}
+              {value.origin === "ai"
+                ? "generated with AI"
+                : value.origin === "search"
+                  ? "found by image search"
+                  : "uploaded"}
             </div>
             <div className="actions">
               <button className="btn ghost small" onClick={() => onChange(null)}>

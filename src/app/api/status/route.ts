@@ -27,6 +27,7 @@ export async function GET() {
     rootWritable,
     home: iconmaschineHome(),
     hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+    hasSerpKey: Boolean(process.env.SERPAPI_API_KEY),
     distDbDir,
     distDbExists,
     platform: process.platform,

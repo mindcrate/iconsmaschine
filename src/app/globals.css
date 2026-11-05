@@ -363,3 +363,42 @@ table.calib td.absent { color: var(--muted); }
   color: var(--ok); border: 1px solid #2c5138;
   border-radius: 3px; padding: 1px 5px;
 }
+
+.hit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.hit {
+  position: relative;
+  background:
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%),
+    linear-gradient(45deg, #2a2a2a 25%, #1a1a1a 25%, #1a1a1a 75%, #2a2a2a 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 6px 6px;
+  border: 2px solid var(--line);
+  border-radius: 5px;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+.hit:hover:not(:disabled) { border-color: var(--accent); }
+.hit:disabled { opacity: 0.5; cursor: wait; }
+.hit img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.hit-meta {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.72);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  padding: 2px 4px;
+  text-align: center;
+}
