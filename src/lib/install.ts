@@ -25,6 +25,8 @@ export interface InstallPlan {
   rootExists: boolean;
   rootWritable: boolean;
   warnings: string[];
+  /** Folders a rename has left behind, which Install can also clean up. */
+  staleDirs: string[];
 }
 
 export interface InstallInput {
@@ -35,6 +37,12 @@ export interface InstallInput {
   files: RenderedFile[];
   /** Supply to also write a dist_database entry (plugins only). */
   distDb: DistDbInput | null;
+  /**
+   * Where this pack was last installed, when that differs from where it would
+   * go now. Renaming moves the install path, and without this the previous
+   * folders would be left behind with nothing pointing at them.
+   */
+  previous?: { vendor: string; product: string; distDb: boolean } | null;
 }
 
 async function statOrNull(p: string) {
@@ -141,6 +149,13 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
     }
   }
 
+  const staleDirs = await findStaleDirs(input);
+  if (staleDirs.length > 0) {
+    warnings.push(
+      `This pack was last installed as "${input.previous!.vendor ? input.previous!.vendor + " / " : ""}${input.previous!.product}". Installing now writes to a new location, leaving the old folders behind unless they are cleaned up.`,
+    );
+  }
+
   return {
     imageRoot,
     distDbRoot,
@@ -150,16 +165,66 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
     rootExists,
     rootWritable,
     warnings,
+    staleDirs,
   };
+}
+
+/** The folders a rename has stranded, if they still exist. */
+async function findStaleDirs(input: InstallInput): Promise<string[]> {
+  const prev = input.previous;
+  if (!prev) return [];
+
+  const sameProduct =
+    folderName(prev.product) === folderName(input.product);
+  const sameVendor = folderName(prev.vendor) === folderName(input.vendor);
+  const sameShape = prev.distDb === Boolean(input.distDb);
+  if (sameProduct && sameVendor && sameShape) return [];
+
+  const imageRoot = niImageDir();
+  const distDbRoot = niDistDatabaseDir();
+  const oldProduct = folderName(prev.product);
+  const oldVendor = folderName(prev.vendor);
+
+  const candidates: string[] = [];
+  try {
+    candidates.push(
+      prev.distDb
+        ? safeJoin(imageRoot, oldVendor, oldProduct)
+        : safeJoin(imageRoot, oldProduct),
+    );
+    if (prev.distDb) {
+      candidates.push(safeJoin(distDbRoot, oldVendor, oldProduct));
+    }
+  } catch {
+    return []; // an unusable old name is not worth acting on
+  }
+
+  const newImage = (await planPaths(input)).imageDir;
+  const out: string[] = [];
+  for (const dir of candidates) {
+    if (dir === newImage) continue;
+    if (await statOrNull(dir)) out.push(dir);
+  }
+  return out;
+}
+
+async function planPaths(input: InstallInput) {
+  const { imageSegments } = buildFileSet(input);
+  return { imageDir: safeJoin(niImageDir(), ...imageSegments) };
 }
 
 export interface InstallResult {
   imageDir: string;
   distDbDir: string | null;
   written: string[];
+  /** Folders removed because a rename stranded them. */
+  cleaned: string[];
 }
 
-export async function install(input: InstallInput): Promise<InstallResult> {
+export async function install(
+  input: InstallInput,
+  opts: { cleanStale?: boolean } = {},
+): Promise<InstallResult> {
   const imageRoot = niImageDir();
   const distDbRoot = niDistDatabaseDir();
   const { productFolder, imageSegments, imageFiles, distDbFiles } =
@@ -187,7 +252,52 @@ export async function install(input: InstallInput): Promise<InstallResult> {
     }
   }
 
-  return { imageDir, distDbDir, written };
+  // Clear the previous location only after the new one is safely written.
+  const cleaned: string[] = [];
+  if (opts.cleanStale && input.previous) {
+    const stale = await findStaleDirs(input);
+    const names = new Set([
+      ...imageFiles.map((f) => f.file),
+      ...distDbFiles.map((f) => f.file),
+      // The old folder is named after the old product, so its .meta is too.
+      `${folderName(input.previous.product)}.meta`,
+    ]);
+    for (const dir of stale) {
+      const removed = await removeOurFiles(dir, names);
+      if (removed) cleaned.push(dir);
+    }
+  }
+
+  return { imageDir, distDbDir, written, cleaned };
+}
+
+/**
+ * Deletes only the filenames this app writes, then the folder if it is empty.
+ * A folder holding anything else is left alone - it may be a real NI library.
+ */
+async function removeOurFiles(dir: string, names: Set<string>): Promise<boolean> {
+  let present: string[];
+  try {
+    present = await fs.readdir(dir);
+  } catch {
+    return false;
+  }
+  for (const name of present) {
+    if (names.has(name)) await fs.rm(safeJoin(dir, name), { force: true });
+  }
+  const left = (await fs.readdir(dir).catch(() => [] as string[])).filter(
+    (f) => f !== ".DS_Store",
+  );
+  if (left.length > 0) return false;
+  await fs.rm(path.join(dir, ".DS_Store"), { force: true });
+  await fs.rmdir(dir).catch(() => {});
+  // Prune a vendor folder left empty by this.
+  const parent = path.dirname(dir);
+  const siblings = (await fs.readdir(parent).catch(() => ["keep"])).filter(
+    (f) => f !== ".DS_Store",
+  );
+  if (siblings.length === 0) await fs.rmdir(parent).catch(() => {});
+  return true;
 }
 
 

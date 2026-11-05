@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const size: AiSize = body.size === "1536x1024" ? "1536x1024" : "1024x1024";
     const quality = body.quality ?? "medium";
 
-    const { image, model } = await generateArtwork({
+    const { image, model, dropped } = await generateArtwork({
       prompt: decoratePrompt(prompt),
       size,
       quality,
@@ -34,6 +34,7 @@ export async function POST(request: Request) {
     return Response.json({
       dataUrl: `data:image/png;base64,${image.toString("base64")}`,
       model,
+      dropped,
     });
   } catch (err) {
     const expected =

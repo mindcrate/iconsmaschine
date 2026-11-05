@@ -25,6 +25,7 @@ export async function POST(request: Request) {
       ...fields,
       id: newPackId(),
       hasLogo: logo !== null,
+      installedAs: null,
       createdAt: now,
       updatedAt: now,
     };

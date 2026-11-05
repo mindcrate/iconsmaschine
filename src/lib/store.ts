@@ -34,6 +34,12 @@ export interface Pack {
   tags: string[];
   /** Hand-adjusted crops, keyed by output filename. */
   crops: CropMap;
+  /**
+   * Where this pack was last written. Renaming the vendor or product changes
+   * the install path, so without this the old folders would be orphaned in NI
+   * Resources with no record that they came from here.
+   */
+  installedAs: InstalledIdentity | null;
   hasLogo: boolean;
   createdAt: string;
   updatedAt: string;
@@ -42,6 +48,24 @@ export interface Pack {
 /** Only plugins get a dist_database entry; expansions live in image/ alone. */
 export function needsDistDb(pack: Pick<Pack, "kitType">): boolean {
   return pack.kitType === "plugin";
+}
+
+export interface InstalledIdentity {
+  vendor: string;
+  product: string;
+  /** Whether a dist_database entry was written too. */
+  distDb: boolean;
+}
+
+/** True when the pack would now install somewhere other than last time. */
+export function hasMoved(pack: Pack): boolean {
+  const prev = pack.installedAs;
+  if (!prev) return false;
+  return (
+    prev.product.trim().toLowerCase() !== pack.product.trim().toLowerCase() ||
+    prev.vendor.trim().toLowerCase() !== pack.vendor.trim().toLowerCase() ||
+    prev.distDb !== needsDistDb(pack)
+  );
 }
 
 export const ARTWORK_FILE = "source-artwork.png";

@@ -28,6 +28,7 @@ export async function PUT(request: Request, { params }: Ctx) {
     const pack = {
       ...existing,
       ...fields,
+      installedAs: existing.installedAs ?? null,
       hasLogo: clearLogo ? false : existing.hasLogo || logo !== null,
     };
 

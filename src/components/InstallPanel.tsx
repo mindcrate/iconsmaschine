@@ -15,6 +15,7 @@ export function InstallPanel({ packId }: { packId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [removed, setRemoved] = useState<UninstallResult | null>(null);
+  const [cleanStale, setCleanStale] = useState(true);
 
   async function remove() {
     if (
@@ -46,7 +47,7 @@ export function InstallPanel({ packId }: { packId: string }) {
     try {
       const res = await postJson<{ plan: InstallPlan; result?: InstallResult }>(
         `/api/packs/${packId}/install`,
-        { dryRun },
+        { dryRun, cleanStale },
       );
       setPlan(res.plan);
       if (res.result) setResult(res.result);
@@ -132,6 +133,31 @@ export function InstallPanel({ packId }: { packId: string }) {
               {w}
             </div>
           ))}
+
+          {plan.staleDirs.length > 0 && !result && (
+            <div className="note">
+              <div className="checkline" style={{ marginBottom: 6 }}>
+                <input
+                  id="clean-stale"
+                  type="checkbox"
+                  checked={cleanStale}
+                  onChange={(e) => setCleanStale(e.target.checked)}
+                />
+                <label htmlFor="clean-stale" style={{ margin: 0 }}>
+                  Also remove the old folders after installing
+                </label>
+              </div>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 11.5 }}>
+                {plan.staleDirs.map((d) => (
+                  <div key={d}>{d}</div>
+                ))}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12 }}>
+                Only files this app wrote are deleted, and only once the new
+                location is in place.
+              </div>
+            </div>
+          )}
 
           {overwrites > 0 && !result && (
             <div className="note">

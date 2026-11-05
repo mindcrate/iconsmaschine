@@ -273,3 +273,121 @@ test("uninstall is a no-op when nothing is installed", async (t) => {
   });
   assert.deepEqual(result.removed, []);
 });
+
+const PREV = { vendor: "Xfer Records", product: "Serum", distDb: true };
+
+test("renaming a pack is reported as leaving the old folders behind", async (t) => {
+  const { image } = await tempRoot(t);
+  const { install, planInstall } = await import("../src/lib/install.ts");
+
+  // Installed once under the old name.
+  await install({
+    product: "Serum",
+    vendor: "Xfer Records",
+    files,
+    distDb: { ...DISTDB, vendor: "Xfer Records", product: "Serum" },
+  });
+
+  // Now renamed.
+  const plan = await planInstall({
+    product: "Serum 2",
+    vendor: "Xfer Records",
+    files,
+    distDb: { ...DISTDB, vendor: "Xfer Records", product: "Serum 2" },
+    previous: PREV,
+  });
+
+  assert.equal(plan.staleDirs.length, 2, "both trees' old folders are stale");
+  assert.ok(plan.staleDirs.some((d) => d.includes(path.join("image", "xfer records", "serum"))));
+  assert.ok(plan.warnings.some((w) => w.includes("last installed as")));
+  assert.ok(await fs.access(path.join(image, "xfer records", "serum")).then(() => true));
+});
+
+test("installing after a rename cleans the old folders up", async (t) => {
+  const { image, distDb } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+
+  await install({
+    product: "Serum",
+    vendor: "Xfer Records",
+    files,
+    distDb: { ...DISTDB, vendor: "Xfer Records", product: "Serum" },
+  });
+
+  const result = await install(
+    {
+      product: "Serum 2",
+      vendor: "Xfer Records",
+      files,
+      distDb: { ...DISTDB, vendor: "Xfer Records", product: "Serum 2" },
+      previous: PREV,
+    },
+    { cleanStale: true },
+  );
+
+  assert.equal(result.cleaned.length, 2);
+  // New location written...
+  await fs.access(path.join(image, "xfer records", "serum 2", "MST_artwork.png"));
+  await fs.access(path.join(distDb, "xfer records", "serum 2", "categories.json"));
+  // ...old location gone.
+  for (const gone of [
+    path.join(image, "xfer records", "serum"),
+    path.join(distDb, "xfer records", "serum"),
+  ]) {
+    assert.equal(
+      await fs.access(gone).then(() => true).catch(() => false),
+      false,
+      `${gone} should have been cleaned up`,
+    );
+  }
+});
+
+test("a rename never deletes a folder holding someone else's files", async (t) => {
+  const { image } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+
+  await install({
+    product: "Serum",
+    vendor: "Xfer Records",
+    files,
+    distDb: { ...DISTDB, vendor: "Xfer Records", product: "Serum" },
+  });
+
+  const stranger = path.join(image, "xfer records", "serum", "SOMETHING_ELSE.png");
+  await fs.writeFile(stranger, "not ours");
+
+  const result = await install(
+    {
+      product: "Serum 2",
+      vendor: "Xfer Records",
+      files,
+      distDb: { ...DISTDB, vendor: "Xfer Records", product: "Serum 2" },
+      previous: PREV,
+    },
+    { cleanStale: true },
+  );
+
+  await fs.access(stranger);
+  assert.equal(await fs.readFile(stranger, "utf8"), "not ours");
+  assert.equal(
+    result.cleaned.includes(path.join(image, "xfer records", "serum")),
+    false,
+    "a folder with foreign files must not be reported as cleaned",
+  );
+});
+
+test("reinstalling under the same name reports nothing stale", async (t) => {
+  await tempRoot(t);
+  const { install, planInstall } = await import("../src/lib/install.ts");
+  const input = {
+    product: "Serum",
+    vendor: "Xfer Records",
+    files,
+    distDb: { ...DISTDB, vendor: "Xfer Records", product: "Serum" },
+    previous: PREV,
+  };
+  await install(input);
+  const plan = await planInstall(input);
+  assert.deepEqual(plan.staleDirs, []);
+  assert.ok(plan.writes.every((w) => w.existing !== null), "all files overwrite");
+});

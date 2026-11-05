@@ -47,7 +47,7 @@ function bool(form: FormData, field: string): boolean {
 
 export function readPackFields(
   form: FormData,
-): Omit<Pack, "id" | "createdAt" | "updatedAt" | "hasLogo"> {
+): Omit<Pack, "id" | "createdAt" | "updatedAt" | "hasLogo" | "installedAs"> {
   const kitType = str(form, "kitType") as KitType;
   const info = KIT_TYPES.find((k) => k.id === kitType);
   if (!info) throw new BadRequest(`Unknown kit type: ${kitType || "(none)"}`);
