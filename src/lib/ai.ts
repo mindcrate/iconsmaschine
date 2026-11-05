@@ -49,16 +49,24 @@ export class NoUsableModelError extends Error {
 
 const BASE = "https://api.openai.com/v1";
 
-/** Newest first. Anything else the account lists is tried after these. */
+/**
+ * Newest first; anything else the account lists is tried after these.
+ *
+ * Matched as PREFIXES, so dated snapshots (gpt-image-2.5-flare-2026-09-08)
+ * rank with their base model rather than falling to the unranked tail.
+ *
+ * The lineup moves fast - dall-e-2/3 were removed in May 2026, gpt-image-1 in
+ * October, and gpt-image-1.5 / -1-mini retire on 2026-12-01 - so this list is
+ * only a fallback. Discovery from /v1/models is what normally decides.
+ */
 const PREFERRED = [
+  "gpt-image-2.5-flare",
+  "gpt-image-2.5-sunburst",
   "gpt-image-2.5",
   "gpt-image-2",
-  "gpt-image-1.5",
-  "gpt-image-1",
-  "gpt-image-1-mini",
 ];
 
-const IMAGE_MODEL_RE = /^(gpt-image|dall-e)/i;
+const IMAGE_MODEL_RE = /^gpt-image/i;
 
 async function listImageModels(key: string): Promise<string[]> {
   try {
@@ -72,14 +80,19 @@ async function listImageModels(key: string): Promise<string[]> {
       .map((m) => m.id)
       .filter((id): id is string => typeof id === "string" && IMAGE_MODEL_RE.test(id));
 
-    const ranked = PREFERRED.filter((p) => ids.includes(p));
+    // Prefix match, so dated snapshots rank with their base model. Within a
+    // rank, the undated id sorts first - it tracks the current snapshot.
+    const ranked: string[] = [];
+    for (const prefix of PREFERRED) {
+      const matches = ids
+        .filter((id) => id === prefix || id.startsWith(prefix + "-"))
+        .filter((id) => !ranked.includes(id))
+        .sort((a, b) => a.length - b.length || a.localeCompare(b));
+      ranked.push(...matches);
+    }
     const rest = ids
       .filter((id) => !ranked.includes(id))
-      // Prefer gpt-image over the older dall-e names.
-      .sort((a, b) => {
-        const score = (s: string) => (s.startsWith("gpt-image") ? 0 : 1);
-        return score(a) - score(b) || b.localeCompare(a);
-      });
+      .sort((a, b) => b.localeCompare(a));
     return [...ranked, ...rest];
   } catch {
     return [];
@@ -92,8 +105,12 @@ function rejectedParameter(body: string): string | null {
     /(?:unknown|unsupported|unrecognized) parameter:?\s*'?"?([a-z_]+)"?'?/i.exec(body) ??
     /"param"\s*:\s*"([a-z_]+)"/i.exec(body);
   const name = m?.[1];
-  // Never drop the two things the request cannot work without.
-  if (!name || name === "model" || name === "prompt") return null;
+  if (!name) return null;
+  // `model` and `prompt` are what the request IS. `quality` is a cost guard:
+  // the current models default to `high`, which is around 35x the price of
+  // `low`, so silently dropping it could turn a cheap call expensive with no
+  // error. Better to fail loudly than to bill by accident.
+  if (name === "model" || name === "prompt" || name === "quality") return null;
   return name;
 }
 

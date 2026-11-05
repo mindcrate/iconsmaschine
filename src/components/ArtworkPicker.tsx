@@ -43,7 +43,7 @@ export function ArtworkPicker({
   const [over, setOver] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState<"1024x1024" | "1536x1024">("1024x1024");
-  const [quality, setQuality] = useState<"low" | "medium" | "high">("medium");
+  const [quality, setQuality] = useState<"low" | "medium" | "high">("low");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -289,12 +289,18 @@ export function ArtworkPicker({
                 value={quality}
                 onChange={(e) => setQuality(e.target.value as typeof quality)}
               >
-                <option value="low">Low - fastest, cheapest</option>
-                <option value="medium">Medium</option>
-                <option value="high">High - slowest</option>
+                <option value="low">Low - cheapest, fine here</option>
+                <option value="medium">Medium - ~8x the cost</option>
+                <option value="high">High - ~35x the cost</option>
               </select>
             </div>
           </div>
+          <p className="hint" style={{ marginTop: -6 }}>
+            Low is the sensible default: the largest file this becomes is 417x65
+            and the smallest is 96x47, so the extra detail in the higher tiers is
+            destroyed by the downscale.
+          </p>
+
           <div className="actions">
             <button
               className="btn"

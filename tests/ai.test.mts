@@ -130,11 +130,11 @@ test("a rejected parameter is dropped and the call retried", async (t) => {
   const { seen } = await mockOpenAi(t, {
     models: ["gpt-image-2"],
     onGenerate: (body) =>
-      "quality" in body
+      "n" in body
         ? {
             status: 400,
             body: JSON.stringify({
-              error: { message: "Unknown parameter: 'quality'.", param: "quality" },
+              error: { message: "Unknown parameter: 'n'.", param: "n" },
             }),
           }
         : { status: 200, json: { data: [{ b64_json: PNG_B64 }] } },
@@ -146,9 +146,11 @@ test("a rejected parameter is dropped and the call retried", async (t) => {
     quality: "high",
   });
   assert.equal(model, "gpt-image-2");
-  assert.deepEqual(dropped, ["quality"]);
+  assert.deepEqual(dropped, ["n"]);
   assert.equal(seen.length, 2);
-  assert.equal("quality" in seen[1], false);
+  assert.equal("n" in seen[1], false);
+  // The cost-bearing parameter survives the retry.
+  assert.equal(seen[1].quality, "high");
 });
 
 test("model and prompt are never dropped, however the API complains", async (t) => {
@@ -244,4 +246,55 @@ test("a missing key fails before any request", async (t) => {
     () => generateArtwork({ prompt: "x", size: "1024x1024", quality: "low" }),
     MissingApiKeyError,
   );
+});
+
+test("quality is never shed - dropping it would default to the priciest tier", async (t) => {
+  const { seen } = await mockOpenAi(t, {
+    models: ["gpt-image-2.5-flare"],
+    onGenerate: () => ({
+      status: 400,
+      body: JSON.stringify({
+        error: { message: "Unknown parameter: 'quality'.", param: "quality" },
+      }),
+    }),
+  });
+
+  // The current models default to `high`, about 35x the price of `low`.
+  // Shedding `quality` would silently buy the expensive tier, so this must
+  // fail loudly instead.
+  await assert.rejects(
+    () => generateArtwork({ prompt: "x", size: "1024x1024", quality: "low" }),
+    /OpenAI image request failed \(400\)/,
+  );
+  assert.equal(seen.length, 1, "it must not retry without quality");
+  assert.equal(seen[0].quality, "low");
+});
+
+test("dated snapshots rank with their base model", async (t) => {
+  const { seen } = await mockOpenAi(t, {
+    models: [
+      "gpt-image-2",
+      "gpt-image-2.5-sunburst",
+      "gpt-image-2.5-flare-2026-09-08",
+      "gpt-4o",
+    ],
+    onGenerate: () => ({ status: 200, json: { data: [{ b64_json: PNG_B64 }] } }),
+  });
+
+  const { model } = await generateArtwork({ prompt: "x", size: "1024x1024", quality: "low" });
+  assert.equal(
+    model,
+    "gpt-image-2.5-flare-2026-09-08",
+    "a flare snapshot should outrank sunburst and 2",
+  );
+  assert.equal(seen.length, 1);
+});
+
+test("non-image models are never called", async (t) => {
+  const { seen } = await mockOpenAi(t, {
+    models: ["gpt-4o", "whisper-1", "text-embedding-3-small", "gpt-image-2"],
+    onGenerate: () => ({ status: 200, json: { data: [{ b64_json: PNG_B64 }] } }),
+  });
+  await generateArtwork({ prompt: "x", size: "1024x1024", quality: "low" });
+  assert.deepEqual(seen.map((s) => s.model), ["gpt-image-2"]);
 });

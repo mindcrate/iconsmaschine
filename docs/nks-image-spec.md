@@ -233,3 +233,46 @@ changes it.
   way the plugin categories are read.
 - Re-saving a preset from the plugin can revert these fields, so the tool needs
   to be re-runnable over a whole folder.
+
+
+## AI artwork: model choice and cost
+
+The OpenAI image lineup moves fast. As of November 2026, researched via search
+(every official pricing page was blocked from the session that checked, so the
+per-image figures below are **derived from token rates, not read off a price
+table** — treat them as indicative):
+
+| Model | Status |
+|---|---|
+| `dall-e-2`, `dall-e-3` | removed 2026-05-12 |
+| `gpt-image-1` | shut down 2026-10-23 |
+| `gpt-image-1-mini`, `gpt-image-1.5` | retire 2026-12-01 |
+| `gpt-image-2` | live |
+| `gpt-image-2.5-flare` / `-sunburst` | live, current |
+
+There is **no `mini` variant** in the 2.x line, so after 1 December the cheapest
+OpenAI option is `gpt-image-2.5-flare` at `quality: "low"`.
+
+### Quality is the lever, not the model
+
+Roughly, per 1024px image: `low` ~$0.006, `medium` ~$0.05, `high` ~$0.21. That
+~35x spread dwarfs any difference between providers at this volume.
+
+For this app the extra fidelity is wasted: the generated image becomes a
+417x65 PNG at the largest and 96x47 at the smallest. The resample destroys
+exactly the detail the higher tiers pay for. So the default is `low`, and the
+dropdown says what the other tiers cost.
+
+`quality` is therefore in the never-drop list alongside `model` and `prompt`.
+The current models default to `high`, so shedding `quality` as an
+"unknown parameter" would silently buy the 35x tier with no error. A rejected
+`quality` fails loudly instead.
+
+### Cheaper alternatives, and why not
+
+FLUX.1 [schnell] runs about $0.003/image on Together.ai (whose endpoint is
+deliberately OpenAI-compatible, so the adapter is small) or fal.ai. That halves
+the per-image cost — but at a handful of images per session it saves pennies in
+exchange for a second API key, a second provider to track, and more code. Not
+worth it unless the usage pattern changes, or you want a genuinely different
+visual style as a second opinion.
