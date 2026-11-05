@@ -3,6 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { packsDir, safeJoin } from "./paths";
 import type { KitType } from "./spec";
+import type { CropMap } from "./crop";
 
 export interface Pack {
   id: string;
@@ -31,6 +32,8 @@ export interface Pack {
   share: boolean;
   /** Your own labels for finding packs in this app. Not Maschine metadata. */
   tags: string[];
+  /** Hand-adjusted crops, keyed by output filename. */
+  crops: CropMap;
   hasLogo: boolean;
   createdAt: string;
   updatedAt: string;

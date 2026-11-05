@@ -145,3 +145,78 @@ test("folder names reject the characters NI disallows", () => {
   assert.ok(validateFolderName(".hidden"));
   assert.ok(validateFolderName(" padded "));
 });
+
+test("a manual crop changes which pixels end up in the output", async () => {
+  // Left half red, right half blue.
+  const src = await sharp({
+    create: { width: 400, height: 200, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } },
+  })
+    .composite([
+      {
+        input: await sharp({
+          create: { width: 200, height: 200, channels: 4, background: { r: 0, g: 0, b: 255, alpha: 1 } },
+        })
+          .png()
+          .toBuffer(),
+        left: 200,
+        top: 0,
+      },
+    ])
+    .png()
+    .toBuffer();
+
+  const spec = { ...IMAGE_SPECS.find((s) => s.fit === "cover")!, width: 50, height: 50 };
+
+  const leftOnly = await renderOne(src, spec, {
+    crop: { x: 0, y: 0, w: 0.25, h: 1 },
+  });
+  const rightOnly = await renderOne(src, spec, {
+    crop: { x: 0.75, y: 0, w: 0.25, h: 1 },
+  });
+
+  const l = await sharp(leftOnly).stats();
+  const r = await sharp(rightOnly).stats();
+  assert.ok(l.channels[0].mean > 200, "left crop should be red");
+  assert.ok(l.channels[2].mean < 50);
+  assert.ok(r.channels[2].mean > 200, "right crop should be blue");
+  assert.ok(r.channels[0].mean < 50);
+});
+
+test("a cropped render still lands on the exact spec size", async () => {
+  const src = await sharp({
+    create: { width: 1600, height: 900, channels: 4, background: { r: 20, g: 90, b: 160, alpha: 1 } },
+  })
+    .png()
+    .toBuffer();
+
+  for (const spec of IMAGE_SPECS) {
+    const out = await renderOne(src, spec, {
+      crop: { x: 0.1, y: 0.1, w: 0.5, h: 0.3 },
+    });
+    const meta = await sharp(out).metadata();
+    assert.equal(meta.width, spec.width, `${spec.file} width`);
+    assert.equal(meta.height, spec.height, `${spec.file} height`);
+  }
+});
+
+test("renderPack applies crops per file, leaving others automatic", async () => {
+  const src = await sharp({
+    create: { width: 800, height: 400, channels: 4, background: { r: 10, g: 10, b: 10, alpha: 1 } },
+  })
+    .png()
+    .toBuffer();
+
+  const specs = specsFor({ nks2: false });
+  const target = specs[0].file;
+  const files = await renderPack({ artwork: src }, specs, {}, {
+    [target]: { x: 0, y: 0, w: 0.2, h: 0.2 },
+  });
+
+  assert.equal(files.length, specs.length);
+  for (const f of files) {
+    const spec = specs.find((s) => s.file === f.file)!;
+    const meta = await sharp(f.buffer).metadata();
+    assert.equal(meta.width, spec.width);
+    assert.equal(meta.height, spec.height);
+  }
+});

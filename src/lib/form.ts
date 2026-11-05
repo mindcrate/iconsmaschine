@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { KIT_TYPES, validateFolderName, type KitType } from "./spec";
+import { clampCrop, isValidCrop, type CropMap } from "./crop";
 import type { Pack } from "./store";
 
 export class BadRequest extends Error {
@@ -90,6 +91,21 @@ export function readPackFields(
     .map((t) => t.trim())
     .filter(Boolean);
 
+  // Crops arrive as JSON. Anything malformed is dropped rather than failing the
+  // save - a bad crop should never cost someone their pack.
+  const crops: CropMap = {};
+  const rawCrops = str(form, "crops");
+  if (rawCrops) {
+    try {
+      const parsed = JSON.parse(rawCrops) as Record<string, unknown>;
+      for (const [file, value] of Object.entries(parsed)) {
+        if (isValidCrop(value)) crops[file] = clampCrop(value);
+      }
+    } catch {
+      throw new BadRequest("Crop data was not valid JSON.");
+    }
+  }
+
   return {
     name: str(form, "name").trim() || product,
     kitType,
@@ -105,6 +121,7 @@ export function readPackFields(
     author: str(form, "author").trim(),
     share: bool(form, "share"),
     tags,
+    crops,
   };
 }
 

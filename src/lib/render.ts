@@ -1,11 +1,14 @@
 import sharp, { type Sharp } from "sharp";
 import type { ImageSpec } from "./spec";
+import { toPixelRect, type Crop, type CropMap } from "./crop";
 
 export interface RenderOptions {
   /** Hex background painted behind `contain` fits and transparent sources. */
   background?: string | null;
   /** Extra breathing room around `contain` fits, as a fraction of the box. */
   padding?: number;
+  /** A hand-adjusted crop for this file, overriding the automatic framing. */
+  crop?: Crop | null;
 }
 
 const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
@@ -36,7 +39,15 @@ export async function renderOne(
 
   let pipeline: Sharp;
 
-  if (spec.fit === "cover") {
+  if (opts.crop) {
+    // A hand-adjusted crop already carries the target aspect ratio, so `fill`
+    // only scales it - no further cropping or letterboxing is wanted.
+    const meta = await sharp(source).metadata();
+    const rect = toPixelRect(opts.crop, meta.width ?? 1, meta.height ?? 1);
+    pipeline = sharp(source)
+      .extract(rect)
+      .resize(spec.width, spec.height, { fit: "fill" });
+  } else if (spec.fit === "cover") {
     pipeline = sharp(source).resize(spec.width, spec.height, {
       fit: "cover",
       position: "centre",
@@ -86,12 +97,16 @@ export async function renderPack(
   sources: { artwork: Buffer; logo?: Buffer | null },
   specs: ImageSpec[],
   opts: RenderOptions = {},
+  crops: CropMap = {},
 ): Promise<RenderedFile[]> {
   return Promise.all(
     specs.map(async (spec) => {
       const source =
         spec.source === "logo" && sources.logo ? sources.logo : sources.artwork;
-      const buffer = await renderOne(source, spec, opts);
+      const buffer = await renderOne(source, spec, {
+        ...opts,
+        crop: crops[spec.file] ?? null,
+      });
       return { file: spec.file, buffer, width: spec.width, height: spec.height };
     }),
   );

@@ -5,9 +5,16 @@ import { ArtworkPicker, type ArtworkSource } from "@/components/ArtworkPicker";
 import { CalibratePanel } from "@/components/CalibratePanel";
 import { InstallPanel } from "@/components/InstallPanel";
 import { LibraryPanel } from "@/components/LibraryPanel";
+import { CropEditor } from "@/components/CropEditor";
 import { PreviewGrid } from "@/components/PreviewGrid";
+import type { Crop, CropMap } from "@/lib/crop";
 import { getJson, sendForm } from "@/lib/client";
-import { KIT_TYPES, validateFolderName, type KitType } from "@/lib/spec";
+import {
+  KIT_TYPES,
+  LOGO_SOURCED_FILES as SPEC_LOGO_FILES,
+  validateFolderName,
+  type KitType,
+} from "@/lib/spec";
 import type { AppStatus, Pack, PreviewFile, Vocabulary } from "@/lib/types";
 
 export default function Page() {
@@ -37,6 +44,8 @@ export default function Page() {
 
   const [packId, setPackId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewFile[] | null>(null);
+  const [crops, setCrops] = useState<CropMap>({});
+  const [editing, setEditing] = useState<PreviewFile | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,6 +102,44 @@ export default function Page() {
     setPackId(null);
   }
 
+  /** Persist a crop and re-render just by rebuilding the pack. */
+  async function saveCrop(file: string, crop: Crop | null) {
+    const next: CropMap = { ...crops };
+    if (crop) next[file] = crop;
+    else delete next[file];
+    setCrops(next);
+    setEditing(null);
+    if (!packId) return;
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.set("kitType", kitType);
+      form.set("vendor", kitInfo.usesDistDb ? vendor : "");
+      form.set("product", product);
+      form.set("fileType", fileType);
+      form.set("categories", categories.join(","));
+      form.set("shortName", shortName);
+      form.set("bgColor", bgColor);
+      form.set("name", name);
+      form.set("author", author);
+      form.set("share", String(share));
+      form.set("tags", tags);
+      form.set("nks2", String(nks2));
+      form.set("background", transparent ? "" : background);
+      form.set("padding", String(padding));
+      form.set("crops", JSON.stringify(next));
+      await sendForm<{ pack: Pack }>(`/api/packs/${packId}`, form, "PUT");
+      const { files } = await getJson<{ files: PreviewFile[] }>(
+        `/api/packs/${packId}/preview`,
+      );
+      setPreview(files);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function build() {
     if (!artwork) return;
     setBusy(true);
@@ -110,6 +157,7 @@ export default function Page() {
       form.set("author", author);
       form.set("share", String(share));
       form.set("tags", tags);
+      form.set("crops", JSON.stringify(crops));
       form.set("nks2", String(nks2));
       form.set("background", transparent ? "" : background);
       form.set("padding", String(padding));
@@ -154,6 +202,7 @@ export default function Page() {
     if (pack.background) setBackground(pack.background);
     setPadding(pack.padding);
     setPackId(pack.id);
+    setCrops(pack.crops ?? {});
     setPreview(null);
     setUseSeparateLogo(pack.hasLogo);
     setArtwork({
@@ -232,6 +281,10 @@ export default function Page() {
                 onClick={() => {
                   setKitType(k.id);
                   resetOutputs();
+                  // Re-scan on every pick: a plugin installed since the page
+                  // loaded should appear without a manual reload.
+                  void refreshVocab();
+                  void refreshStatus();
                 }}
               >
                 <strong>{k.label}</strong>
@@ -645,7 +698,11 @@ export default function Page() {
               {preview.length} files ready. Check the crops, then install straight into
               NI Resources.
             </p>
-            <PreviewGrid files={preview} />
+            <PreviewGrid
+              files={preview}
+              croppedFiles={new Set(Object.keys(crops))}
+              onEdit={setEditing}
+            />
             <div style={{ marginTop: 22 }}>
               <InstallPanel packId={packId} />
             </div>
@@ -667,6 +724,22 @@ export default function Page() {
           <CalibratePanel onDone={refreshStatus} />
         </section>
       </div>
+
+      {editing && packId && (
+        <CropEditor
+          file={editing.file}
+          targetW={editing.width}
+          targetH={editing.height}
+          sourceUrl={`/api/packs/${packId}/source?which=${
+            preview && SPEC_LOGO_FILES.has(editing.file) && useSeparateLogo
+              ? "logo"
+              : "artwork"
+          }`}
+          initial={crops[editing.file] ?? null}
+          onSave={(c) => saveCrop(editing.file, c)}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </>
   );
 }

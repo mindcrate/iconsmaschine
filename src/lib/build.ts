@@ -26,6 +26,7 @@ export async function buildPack(
     { artwork: sources.artwork, logo: sources.logo },
     specsFor({ nks2: pack.nks2 }),
     { background: pack.background, padding: pack.padding },
+    pack.crops ?? {},
   );
 
   return { pack, files };

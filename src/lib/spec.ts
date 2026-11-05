@@ -191,3 +191,8 @@ export function validateFolderName(name: string): string | null {
   if (name.length > 64) return "Keep the name under 64 characters.";
   return null;
 }
+
+/** Output files driven by the logo source rather than the artwork. */
+export const LOGO_SOURCED_FILES = new Set(
+  IMAGE_SPECS.filter((s) => s.source === "logo").map((s) => s.file),
+);
