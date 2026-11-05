@@ -205,3 +205,89 @@ test("a chunk claiming more bytes than exist is rejected", () => {
   h.writeUInt32LE(body.length, 4);
   assert.throws(() => parseNksf(Buffer.concat([h, body])), /past the end/);
 });
+
+/**
+ * A second real preset, with a two-entry bankchain and existing tags - the
+ * shape Serum does not exercise. Transcribed from the same machine.
+ */
+function microtonicNisi(): Buffer {
+  const parts: Buffer[] = [];
+  const fixstr = (s: string) => {
+    const b = Buffer.from(s, "utf8");
+    return Buffer.concat([Buffer.from([0xa0 | b.length]), b]);
+  };
+  parts.push(Buffer.from([0x01, 0x00, 0x00, 0x00]));
+  parts.push(Buffer.from([0x89]));
+  parts.push(fixstr("author"), fixstr(""));
+  parts.push(
+    fixstr("bankchain"),
+    Buffer.from([0x93]),
+    fixstr("Sonic Charge"),
+    fixstr("Microtonic"),
+    fixstr(""),
+  );
+  parts.push(fixstr("characters"), Buffer.from([0x91]), fixstr("Analog"));
+  parts.push(fixstr("comment"), fixstr(""));
+  parts.push(fixstr("deviceType"), fixstr("INST"));
+  parts.push(fixstr("name"), fixstr("Wild shit"));
+  parts.push(
+    fixstr("types"),
+    Buffer.from([0x91]),
+    Buffer.from([0x91]),
+    fixstr("Beatbox"),
+  );
+  const uuid = "82e78171-7494-4761-99d8-d32b99121100";
+  parts.push(fixstr("uuid"), Buffer.from([0xd9, uuid.length]), Buffer.from(uuid, "utf8"));
+  parts.push(fixstr("vendor"), fixstr("Sonic Charge"));
+  return Buffer.concat(parts);
+}
+
+function microtonicPreset(): Buffer {
+  const chunk = (id: string, data: Buffer) => {
+    const h = Buffer.alloc(8);
+    h.write(id, 0, 4, "ascii");
+    h.writeUInt32LE(data.length, 4);
+    const pad = data.length % 2 === 1 ? Buffer.alloc(1) : Buffer.alloc(0);
+    return Buffer.concat([h, data, pad]);
+  };
+  const body = Buffer.concat([
+    Buffer.from("NIKS", "ascii"),
+    chunk("NISI", microtonicNisi()),
+    chunk("NICA", Buffer.from([0x02, 0x00, 0x00, 0x00])),
+    chunk("PCHK", Buffer.from("microtonic pattern data", "ascii")),
+  ]);
+  const h = Buffer.alloc(8);
+  h.write("RIFF", 0, 4, "ascii");
+  h.writeUInt32LE(body.length, 4);
+  return Buffer.concat([h, body]);
+}
+
+test("a two-entry bankchain with existing tags parses correctly", () => {
+  const { summary } = readSummary(parseNksf(microtonicPreset()));
+  assert.deepEqual(summary.bankchain, ["Sonic Charge", "Microtonic", ""]);
+  assert.deepEqual(summary.characters, ["Analog"]);
+  assert.deepEqual(summary.types, [["Beatbox"]]);
+  assert.equal(summary.vendor, "Sonic Charge");
+  assert.equal(summary.name, "Wild shit");
+});
+
+test("the byte-exact safety test holds for the second real preset too", () => {
+  const original = microtonicPreset();
+  assert.equal(
+    editPreset(original, (s) => s).equals(original),
+    true,
+    "a no-op edit must not change a single byte",
+  );
+});
+
+test("existing tags are replaced, not appended to", () => {
+  const edited = editPreset(microtonicPreset(), (s) => ({
+    ...s,
+    characters: ["Digital", "Bright"],
+    types: [["Drums", "Kick"]],
+  }));
+  const summary = readSummary(parseNksf(edited)).summary;
+  assert.deepEqual(summary.characters, ["Digital", "Bright"]);
+  assert.deepEqual(summary.types, [["Drums", "Kick"]]);
+  assert.deepEqual(summary.bankchain, ["Sonic Charge", "Microtonic", ""]);
+});

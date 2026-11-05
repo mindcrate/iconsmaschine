@@ -183,6 +183,33 @@ properties set out below already enforced by tests:
 - Malformed or non-NKS files are refused with a clear error, never mangled.
 - RIFF word-alignment padding and the top-level size header are maintained.
 
+### Confirmed against a second preset
+
+Sonic Charge Microtonic gave the shape Serum does not - a two-entry bankchain
+and existing tags:
+
+| Key | Serum | Microtonic |
+|---|---|---|
+| `bankchain` | `["Serum", "", ""]` | `["Sonic Charge", "Microtonic", ""]` |
+| `characters` | `[]` | `["Analog"]` |
+| `types` | `[]` | `[["Beatbox"]]` |
+| `vendor` | `"Xfer"` | `"Sonic Charge"` |
+
+Note Microtonic's preset vendor is **"Sonic Charge"**, not "Native Instruments".
+Where Maschine displays "Native Instruments" for it, that is coming from the
+browser database's record of the *plugin*, not from the preset.
+
+### Tag vocabulary
+
+`src/lib/tagvocab.ts` reads the Types and Characters in use from Maschine's
+`komplete.db3`. The database belongs to Maschine, so it is **copied to a temp
+file and the copy is read** - never opened in place, so there is no lock to
+take and no way to write to it. Verified by hashing the source before and
+after. A curated list is used if the database is missing, too large, or has a
+schema the reader does not recognise, and the UI says which source was used.
+
+`scripts/inspect-db.sh` dumps the real schema, also from a copy.
+
 ### Still to do
 
 - A UI for editing vendor, bankchain, types and characters.
