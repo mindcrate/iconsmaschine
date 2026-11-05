@@ -131,39 +131,63 @@ Either side can be made to match - change the pack to the plugin's vendor, or
 change the preset's Vendor property (browser → Edit → properties). Matching the
 plugin's own string is less work and survives re-saving presets.
 
-## Not built yet — preset metadata (.nksf)
+## Preset metadata (.nksf) — format decoded, UI not built
 
-Everything on the GENERAL, TYPES and CHARACTERS tabs of Maschine's preset
-editor lives inside the **preset file**, not in `dist_database`:
+Everything on the GENERAL, TYPES and CHARACTERS tabs lives in the **preset
+file**, not in `dist_database`. That is why a preset can keep showing the wrong
+vendor however correct its dist_database entry is: the two are independent, and
+the preset wins on those tabs.
 
-| Shown in Maschine | Lives in |
-|---|---|
-| Plugin's vendor group, category, colour, short name | `dist_database/.../*.json` + `.meta` — **built** |
-| Preset's Vendor and Product (GENERAL) | the `.nksf` file — not built |
-| TYPES (Beatbox, Best Of, Birds …) | the `.nksf` file — not built |
-| CHARACTERS (Acoustic, Additive …) | the `.nksf` file — not built |
+### The format
 
-So a preset can keep showing the wrong vendor — "Native Instruments" on a
-Sonic Charge Microtonic preset, for instance — however correct the
-dist_database entry is. The two are independent, and the preset wins for
-anything on those tabs.
+A `.nksf` is a **RIFF** container with form `NIKS`:
 
-Some plugins also show **two lines** under GENERAL (e.g. "Sonic Charge" then
-"Microtonic") where most show one. That is probably the `bankchain` — a
-vendor/product hierarchy — rather than a single product string.
+```
+"RIFF" <u32 size> "NIKS"
+  "NISI" <u32 size> <u32 version=1> <MessagePack map>   summary info
+  "NICA" <u32 size> ...                                 controller assignments
+  "PLID" <u32 size> ...                                 plugin id
+  "PCHK" <u32 size> ...                                 the plugin's own state
+```
 
-### Before writing presets
+The metadata is **MessagePack**, not JSON. From a real Serum preset:
 
-`.nksf` is a chunked container with JSON metadata inside. `scripts/inspect-nksf.sh`
-dumps the chunk tags and pretty-prints every embedded JSON block, read-only.
+| Key | Value | Shown as |
+|---|---|---|
+| `author` | `""` | — |
+| `bankchain` | `["Serum", "", ""]` | **the lines under GENERAL** |
+| `characters` | `[]` | CHARACTERS tab |
+| `comment` | `""` | — |
+| `deviceType` | `"INST"` | instrument vs effect |
+| `name` | `"Serum Future Bass Brass"` | preset name |
+| `types` | `[]` | TYPES tab (each entry is a path) |
+| `uuid` | `"a6db6796-…"` | — |
+| `vendor` | `"Xfer"` | preset vendor |
 
-Writing to presets is destructive in a way nothing else here is: these are the
-user's own files, and a bad write loses work. Requirements when it is built:
+`bankchain` explains why some plugins show two lines under GENERAL and most show
+one — it is a hierarchy, not a single product string.
 
-- Write to a copy, and only overwrite in place on an explicit opt-in.
-- Preserve every chunk that is not being edited, byte for byte.
-- Round-trip test: parse → write with no changes → assert identical bytes.
-- Validate Types and Characters against NI's controlled vocabulary, harvested
-  the same way the plugin categories were.
+Note the preset's `vendor` ("Xfer") need not equal the vendor Maschine groups
+the *plugin* under ("Xfer Records"). They are separate fields in separate files.
+
+### What is implemented
+
+`src/lib/msgpack.ts` and `src/lib/nksf.ts` read and write this, with the safety
+properties set out below already enforced by tests:
+
+- A no-op edit reproduces the file **byte for byte** (`tests/nksf.test.mts`).
+- `NICA`, `PLID` and `PCHK` are carried through untouched — the sound data is
+  never re-encoded.
+- Original map key order is preserved, so a rewrite matches NI's byte layout.
+- Unknown keys NI may add in future survive an edit.
+- Malformed or non-NKS files are refused with a clear error, never mangled.
+- RIFF word-alignment padding and the top-level size header are maintained.
+
+### Still to do
+
+- A UI for editing vendor, bankchain, types and characters.
+- Write to a copy by default; overwrite in place only on an explicit opt-in.
+- Harvest the Types and Characters vocabulary from installed presets, the same
+  way the plugin categories are read.
 - Re-saving a preset from the plugin can revert these fields, so the tool needs
-  to be re-runnable over a folder.
+  to be re-runnable over a whole folder.

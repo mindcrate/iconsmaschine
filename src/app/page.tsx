@@ -102,6 +102,39 @@ export default function Page() {
     setPackId(null);
   }
 
+  /** Clears every field so a new instrument can be started from scratch. */
+  function clearForm() {
+    if (
+      (product || vendor || artwork) &&
+      !confirm("Clear all fields and start a new pack?\n\nSaved packs are not affected - this only empties the form.")
+    )
+      return;
+    setVendor("");
+    setProduct("");
+    setFileType("Instruments");
+    setCategories([]);
+    setShortName("");
+    setBgColor("#f4b021");
+    setName("");
+    setAuthor("");
+    setShare(false);
+    setTags("");
+    setNks2(true);
+    setBackground("#101010");
+    setTransparent(true);
+    setPadding(0.08);
+    setArtwork(null);
+    setLogo(null);
+    setUseSeparateLogo(false);
+    setCrops({});
+    setEditing(null);
+    setError(null);
+    resetOutputs();
+    void refreshVocab();
+    void refreshStatus();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   /** Persist a crop and re-render just by rebuilding the pack. */
   async function saveCrop(file: string, crop: Crop | null) {
     const next: CropMap = { ...crops };
@@ -268,9 +301,17 @@ export default function Page() {
         <section className="step">
           <h2>
             <span className="letter">A</span>Choose your kit type
+            <button
+              className="btn ghost small"
+              style={{ marginLeft: "auto" }}
+              onClick={clearForm}
+            >
+              Clear &amp; start new
+            </button>
           </h2>
           <p className="hint">
-            This decides the folder shape the pack installs into.
+            This decides the folder shape the pack installs into. Picking one
+            also re-scans for newly installed plugins.
           </p>
           <div className="kit-grid">
             {KIT_TYPES.map((k) => (
