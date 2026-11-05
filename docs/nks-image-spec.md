@@ -201,14 +201,29 @@ browser database's record of the *plugin*, not from the preset.
 
 ### Tag vocabulary
 
-`src/lib/tagvocab.ts` reads the Types and Characters in use from Maschine's
-`komplete.db3`. The database belongs to Maschine, so it is **copied to a temp
-file and the copy is read** - never opened in place, so there is no lock to
-take and no way to write to it. Verified by hashing the source before and
-after. A curated list is used if the database is missing, too large, or has a
-schema the reader does not recognise, and the UI says which source was used.
+`src/lib/tagvocab.ts` reads the real strings from Maschine's `komplete.db3`.
+Schema confirmed against a 354 MB database with 29 tables:
 
-`scripts/inspect-db.sh` dumps the real schema, also from a copy.
+| Table | Rows | Holds |
+|---|---|---|
+| `k_category` (category, subcategory, subsubcategory) | 1,136 | the **Types** tree |
+| `k_mode` (name) | 139 | the **Characters** |
+| `k_bank_chain` (bcvendor, entry1, entry2, entry3) | 2,583 | vendor / product chains |
+
+`k_sound_info_category` and `k_sound_info_mode` are join tables with ~190,000
+rows each, mapping sounds to tags. They are not the vocabulary and are not
+read.
+
+The database belongs to Maschine, so it is opened **read-only in place** — the
+option is accepted at runtime even though the bundled typings omit it. If that
+fails (a lock, an in-flight WAL) it falls back to reading a temporary copy. A
+test hashes the file before and after to prove it is never modified.
+
+Results are cached against the database's size and mtime, so a 354 MB file is
+read once rather than on every request, and re-read automatically when Maschine
+changes it.
+
+`scripts/inspect-db.sh` dumps the schema, working from a copy.
 
 ### Still to do
 

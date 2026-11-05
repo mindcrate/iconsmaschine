@@ -2,74 +2,67 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { iconmaschineHome } from "./paths";
 
 /**
- * The Types and Characters vocabulary Maschine itself uses.
+ * The Types, Characters and bank chains Maschine itself uses.
  *
- * Maschine keeps its browser index in a SQLite database. Reading it gives the
- * exact tag strings in use across every installed library - far better than a
- * hand-copied list.
+ * Maschine keeps its browser index in `komplete.db3`. Reading it gives the
+ * exact strings in use across every installed library, rather than a
+ * hand-copied list. Schema confirmed against a real 354 MB database:
  *
- * The database belongs to Maschine, so it is never opened in place: we copy it
- * to a temp file, read the copy, and delete it. That rules out taking a lock
- * on a database Maschine may have open, and makes an accidental write
- * impossible.
+ *   k_category    (id, category, subcategory, subsubcategory)  the Types tree
+ *   k_mode        (id, name)                                   the Characters
+ *   k_bank_chain  (id, bcvendor, entry1, entry2, entry3)       vendor/product
  *
- * If it cannot be read (Maschine holding a lock, a schema change, SQLite
- * unavailable), the curated fallback below is used instead.
+ * Note `k_sound_info_category` and `k_sound_info_mode` are join tables holding
+ * hundreds of thousands of rows - they map sounds to tags and are not the
+ * vocabulary.
+ *
+ * The database belongs to Maschine, so it is opened READ-ONLY and never
+ * written. If a read-only open fails (a lock, a WAL in flight), it falls back
+ * to reading a temporary copy. Results are cached against the file's size and
+ * mtime so a large database is read at most once per change.
  */
 
+export interface BankChain {
+  vendor: string;
+  entries: string[];
+}
+
 export interface TagVocabulary {
-  /** Type paths, e.g. ["Drums", "Kick"]. */
+  /** Type paths, e.g. ["Brass", "Ensemble"]. */
   types: string[][];
   characters: string[];
-  source: "database" | "fallback";
+  /** Known vendor/product chains, for autocomplete. */
+  bankChains: BankChain[];
+  vendors: string[];
+  source: "database" | "database-copy" | "fallback" | "cache";
   dbPath: string | null;
   note?: string;
 }
 
-/** NI's documented tag set, used when the database cannot be read. */
 const FALLBACK_TYPES: string[][] = [
-  ["Bass"], ["Bass", "Analog Bass"], ["Bass", "Acoustic Bass"], ["Bass", "Sub Bass"],
-  ["Bass", "Synth Bass"],
-  ["Bowed Strings"], ["Bowed Strings", "Cello"], ["Bowed Strings", "Violin"],
-  ["Brass"], ["Brass", "Horn"], ["Brass", "Synth Brass"], ["Brass", "Trumpet"],
-  ["Drums"], ["Drums", "Beatbox"], ["Drums", "Kick"], ["Drums", "Snare"],
-  ["Drums", "Hihat"], ["Drums", "Clap"], ["Drums", "Cymbal"], ["Drums", "Tom"],
-  ["Drums", "Drumset"],
-  ["Flute"], ["Guitar"], ["Guitar", "Acoustic Guitar"], ["Guitar", "Electric Guitar"],
+  ["Bass"], ["Bowed Strings"], ["Brass"], ["Drums"], ["Flute"], ["Guitar"],
   ["Mallet Instruments"], ["Organ"], ["Percussion"], ["Piano"],
-  ["Piano", "Acoustic Piano"], ["Piano", "Electric Piano"],
-  ["Plucked Strings"], ["Reed Instruments"],
-  ["Sound Effects"], ["Soundscapes"],
-  ["Synth Lead"], ["Synth Misc"], ["Synth Pad"],
+  ["Plucked Strings"], ["Reed Instruments"], ["Sound Effects"],
+  ["Soundscapes"], ["Synth Lead"], ["Synth Misc"], ["Synth Pad"],
   ["Vocal"], ["Other"],
 ];
 
 const FALLBACK_CHARACTERS = [
-  "Acoustic", "Additive", "Aggressive", "Analog", "Arpeggiated", "Big",
-  "Bright", "Clean", "Cold", "Dark", "Decaying", "Deep", "Digital",
-  "Dirty", "Dissonant", "Distorted", "Dry", "Electric", "Ethereal", "Evolving",
-  "FM", "Glide", "Granular", "Hard", "Harmonic", "Layered", "Metallic",
-  "Muted", "Natural", "Noisy", "Percussive", "Processed",
-  "Resonant", "Reverberant", "Sequence/Loop", "Simple", "Soft", "Stereo",
-  "Sustained", "Synthetic", "Tempo-synced", "Warm", "Wet",
+  "Acoustic", "Analog", "Bright", "Dark", "Digital", "Dirty", "Distorted",
+  "Dry", "Layered", "Processed", "Sample-based", "Synthetic", "Warm", "Wet",
 ];
 
 function candidateDbPaths(): string[] {
-  const base = path.join(
-    os.homedir(),
-    "Library",
-    "Application Support",
-    "Native Instruments",
-  );
-  const winBase = path.join(
-    process.env.LOCALAPPDATA ?? "",
-    "Native Instruments",
-  );
+  const mac = path.join(os.homedir(), "Library", "Application Support", "Native Instruments");
+  const win = process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, "Native Instruments")
+    : "";
   const names = ["Maschine 2", "Komplete Kontrol", "Kontakt 8", "Kontakt 7"];
   const out: string[] = [];
-  for (const root of [base, winBase]) {
+  for (const root of [mac, win]) {
     if (!root) continue;
     for (const n of names) out.push(path.join(root, n, "komplete.db3"));
   }
@@ -82,138 +75,169 @@ function findDb(): string | null {
   return candidateDbPaths().find((p) => fs.existsSync(p)) ?? null;
 }
 
-/**
- * Opens the database read-only and pulls out the distinct tag strings.
- *
- * The schema is not documented, so this probes the tables that exist rather
- * than assuming. Anything unexpected falls back rather than throwing.
- */
-export async function readTagVocabulary(): Promise<TagVocabulary> {
+interface Row {
+  [key: string]: unknown;
+}
+interface Db {
+  prepare: (sql: string) => { all: (...args: never[]) => Row[] };
+  close: () => void;
+}
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function readTypes(db: Db): string[][] {
+  const seen = new Set<string>();
+  for (const row of db.prepare(
+    "SELECT DISTINCT category, subcategory, subsubcategory FROM k_category",
+  ).all()) {
+    const parts = [row.category, row.subcategory, row.subsubcategory]
+      .map(str)
+      .filter(Boolean);
+    if (parts.length) seen.add(JSON.stringify(parts));
+  }
+  return [...seen]
+    .map((s) => JSON.parse(s) as string[])
+    .sort((a, b) => a.join(" > ").localeCompare(b.join(" > ")));
+}
+
+function readCharacters(db: Db): string[] {
+  const seen = new Set<string>();
+  for (const row of db.prepare("SELECT DISTINCT name FROM k_mode").all()) {
+    const v = str(row.name);
+    if (v) seen.add(v);
+  }
+  return [...seen].sort((a, b) => a.localeCompare(b));
+}
+
+function readBankChains(db: Db): BankChain[] {
+  const seen = new Map<string, BankChain>();
+  for (const row of db.prepare(
+    "SELECT DISTINCT bcvendor, entry1, entry2, entry3 FROM k_bank_chain",
+  ).all()) {
+    const entries = [row.entry1, row.entry2, row.entry3].map(str).filter(Boolean);
+    if (entries.length === 0) continue;
+    const chain = { vendor: str(row.bcvendor), entries };
+    seen.set(JSON.stringify(chain), chain);
+  }
+  return [...seen.values()].sort((a, b) =>
+    (a.vendor + a.entries.join(" ")).localeCompare(b.vendor + b.entries.join(" ")),
+  );
+}
+
+async function openDb(dbPath: string): Promise<{ db: Db; source: "database" | "database-copy"; cleanup: () => Promise<void> }> {
+  const { DatabaseSync } = await import("node:sqlite");
+
+  // Preferred: read-only, in place. No copy, no write possible. The option is
+  // accepted at runtime even where the bundled typings omit it.
+  try {
+    const db = new DatabaseSync(dbPath, {
+      readOnly: true,
+    } as unknown as undefined) as unknown as Db;
+    return { db, source: "database", cleanup: async () => {} };
+  } catch {
+    // A lock or an in-flight WAL: fall back to reading a snapshot.
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "iconmaschine-db-"));
+    const copy = path.join(dir, "snapshot.db3");
+    await fsp.copyFile(dbPath, copy);
+    const db = new DatabaseSync(copy) as unknown as Db;
+    return {
+      db,
+      source: "database-copy",
+      cleanup: () => fsp.rm(dir, { recursive: true, force: true }),
+    };
+  }
+}
+
+function cachePath(): string {
+  return path.join(iconmaschineHome(), "cache", "tagvocab.json");
+}
+
+interface CacheFile {
+  key: string;
+  value: TagVocabulary;
+}
+
+let memo: CacheFile | null = null;
+
+async function cacheKey(dbPath: string): Promise<string> {
+  const s = await fsp.stat(dbPath);
+  return `${dbPath}:${s.size}:${s.mtimeMs}`;
+}
+
+export async function readTagVocabulary(
+  opts: { refresh?: boolean } = {},
+): Promise<TagVocabulary> {
   const dbPath = findDb();
   if (!dbPath) {
     return {
       types: FALLBACK_TYPES,
       characters: FALLBACK_CHARACTERS,
+      bankChains: [],
+      vendors: [],
       source: "fallback",
       dbPath: null,
       note: "No Maschine database found; using the built-in tag list.",
     };
   }
 
-  // Guard against copying a huge database just to read a tag list.
-  const MAX_BYTES = 600 * 1024 * 1024;
-  let copyPath: string | null = null;
+  const key = await cacheKey(dbPath);
 
-  try {
-    const { size } = await fsp.stat(dbPath);
-    if (size > MAX_BYTES) {
-      return {
-        types: FALLBACK_TYPES,
-        characters: FALLBACK_CHARACTERS,
-        source: "fallback",
-        dbPath,
-        note: `${path.basename(dbPath)} is ${(size / 1e6).toFixed(0)} MB - too large to copy for a tag read.`,
-      };
-    }
-
-    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "iconmaschine-db-"));
-    copyPath = path.join(dir, "snapshot.db3");
-    await fsp.copyFile(dbPath, copyPath);
-
-    const { DatabaseSync } = await import("node:sqlite");
-    const db = new DatabaseSync(copyPath) as unknown as Db;
+  if (!opts.refresh) {
+    if (memo?.key === key) return { ...memo.value, source: "cache" };
     try {
-      const tables = db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table'")
-        .all()
-        .map((r) => String((r as { name: unknown }).name));
-
-      const types = collectTypes(db, tables);
-      const characters = collectCharacters(db, tables);
-
-      if (types.length === 0 && characters.length === 0) {
-        return {
-          types: FALLBACK_TYPES,
-          characters: FALLBACK_CHARACTERS,
-          source: "fallback",
-          dbPath,
-          note: `Read ${path.basename(dbPath)} but found no recognisable tag tables (saw: ${tables.slice(0, 8).join(", ")}).`,
-        };
+      const disk = JSON.parse(await fsp.readFile(cachePath(), "utf8")) as CacheFile;
+      if (disk.key === key) {
+        memo = disk;
+        return { ...disk.value, source: "cache" };
       }
+    } catch {
+      /* no usable cache */
+    }
+  }
 
-      return {
+  let cleanup: (() => Promise<void>) | null = null;
+  try {
+    const opened = await openDb(dbPath);
+    cleanup = opened.cleanup;
+    try {
+      const types = readTypes(opened.db);
+      const characters = readCharacters(opened.db);
+      const bankChains = readBankChains(opened.db);
+      const vendors = [...new Set(bankChains.map((b) => b.vendor).filter(Boolean))].sort();
+
+      const value: TagVocabulary = {
         types: types.length ? types : FALLBACK_TYPES,
         characters: characters.length ? characters : FALLBACK_CHARACTERS,
-        source: "database",
+        bankChains,
+        vendors,
+        source: opened.source,
         dbPath,
       };
+
+      memo = { key, value };
+      try {
+        await fsp.mkdir(path.dirname(cachePath()), { recursive: true });
+        await fsp.writeFile(cachePath(), JSON.stringify({ key, value }));
+      } catch {
+        /* caching is an optimisation, not a requirement */
+      }
+      return value;
     } finally {
-      (db as unknown as { close: () => void }).close();
+      opened.db.close();
     }
   } catch (err) {
     return {
       types: FALLBACK_TYPES,
       characters: FALLBACK_CHARACTERS,
+      bankChains: [],
+      vendors: [],
       source: "fallback",
       dbPath,
       note: `Could not read ${path.basename(dbPath)} (${(err as Error).message}); using the built-in list.`,
     };
   } finally {
-    if (copyPath) {
-      await fsp.rm(path.dirname(copyPath), { recursive: true, force: true });
-    }
-  }
-}
-
-type Db = {
-  prepare: (sql: string) => { all: (...args: unknown[]) => unknown[] };
-};
-
-/** NI has used a few schemas; try the known shapes and keep what works. */
-function collectTypes(db: Db, tables: string[]): string[][] {
-  const out = new Set<string>();
-
-  if (tables.includes("k_sound_info_category")) {
-    tryQuery(db, "SELECT DISTINCT category, subcategory, subsubcategory FROM k_sound_info_category", (row) => {
-      const r = row as Record<string, unknown>;
-      const parts = [r.category, r.subcategory, r.subsubcategory]
-        .map((v) => (typeof v === "string" ? v.trim() : ""))
-        .filter(Boolean);
-      if (parts.length) out.add(JSON.stringify(parts));
-    });
-  }
-  for (const t of ["k_category", "category"]) {
-    if (!tables.includes(t)) continue;
-    tryQuery(db, `SELECT DISTINCT category, subcategory, subsubcategory FROM ${t}`, (row) => {
-      const r = row as Record<string, unknown>;
-      const parts = [r.category, r.subcategory, r.subsubcategory]
-        .map((v) => (typeof v === "string" ? v.trim() : ""))
-        .filter(Boolean);
-      if (parts.length) out.add(JSON.stringify(parts));
-    });
-  }
-
-  return [...out]
-    .map((s) => JSON.parse(s) as string[])
-    .sort((a, b) => a.join(" > ").localeCompare(b.join(" > ")));
-}
-
-function collectCharacters(db: Db, tables: string[]): string[] {
-  const out = new Set<string>();
-  for (const t of ["k_mode", "mode", "k_sound_info_mode"]) {
-    if (!tables.includes(t)) continue;
-    tryQuery(db, `SELECT DISTINCT name FROM ${t}`, (row) => {
-      const v = (row as { name?: unknown }).name;
-      if (typeof v === "string" && v.trim()) out.add(v.trim());
-    });
-  }
-  return [...out].sort((a, b) => a.localeCompare(b));
-}
-
-function tryQuery(db: Db, sql: string, onRow: (row: unknown) => void): void {
-  try {
-    for (const row of db.prepare(sql).all()) onRow(row);
-  } catch {
-    /* a schema that does not match is expected; other shapes are tried */
+    if (cleanup) await cleanup();
   }
 }
