@@ -12,9 +12,16 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  /*
+   * `suppressHydrationWarning` is shallow - it only covers attributes React
+   * finds on these two elements, not their children. Browser extensions
+   * routinely inject attributes onto <html> and <body> before React hydrates
+   * (e.g. data-xt-extension-active), which React would otherwise report as a
+   * hydration mismatch the app can do nothing about.
+   */
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
