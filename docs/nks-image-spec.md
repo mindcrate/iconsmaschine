@@ -276,3 +276,37 @@ the per-image cost — but at a handful of images per session it saves pennies i
 exchange for a second API key, a second provider to track, and more code. Not
 worth it unless the usage pattern changes, or you want a genuinely different
 visual style as a second opinion.
+
+
+## Sample kits: what a kit is on disk
+
+Surveying a real system settled why the sample-kit case never worked.
+
+### Maschine's own formats are not the NKS container
+
+| Extension | Container | Editable by this app |
+|---|---|---|
+| `.nksf`, `.nksfx` | RIFF / `NIKS` | yes - vendor, bankchain, types, characters |
+| `.mxgrp`, `.mxsnd`, `.mxinst`, `.mxprj`, `.nksn` | `<u32 size> … "hsin" …` | **no** - proprietary, undocumented |
+
+So the preset editor does **not** extend to Groups and Sounds. Writing a
+`.mxgrp` would mean reverse-engineering NI's own format, which is a far bigger
+job than the NKS container was and carries real risk of corrupting a user's
+Groups.
+
+### But a kit may not need a file edit at all
+
+`k_bank_chain.entry1` holds names like `Amplified Funk`, and NI Resources
+contains a flat folder `image/amplified funk/`. That suggests **library content
+resolves artwork by its bank chain, lowercased** - not by vendor. Vendor is the
+plugin path (`image/<vendor>/<product>/` plus a dist_database entry).
+
+If that holds, a user sample kit needs no edit to any Maschine file: it needs an
+image folder named after its bank chain. `scripts/match-kits.sh` tests this by
+cross-referencing every image folder against every bank chain, and lists the
+chains that hold sounds but have no folder - i.e. exactly the kits with no
+artwork, and the folder name each one needs.
+
+**Status: hypothesis, not yet confirmed on real data.** The counts that
+matter are how many image folders match a bank chain versus a vendor. If
+bank-chain matches dominate, the mapping is established.
