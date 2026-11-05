@@ -220,3 +220,60 @@ test("renderPack applies crops per file, leaving others automatic", async () => 
     assert.equal(meta.height, spec.height);
   }
 });
+
+test("logo files fill the frame when derived from artwork, not left as a speck", async () => {
+  // A square photo into a 227x47 box: `contain` would leave it on ~14% of the
+  // frame with the rest transparent, which is the bug this guards.
+  const square = await sharp({
+    create: { width: 1400, height: 1400, channels: 4, background: { r: 200, g: 90, b: 20, alpha: 1 } },
+  })
+    .png()
+    .toBuffer();
+
+  const wideLogoSpecs = IMAGE_SPECS.filter(
+    (s) => s.source === "logo" && s.width / s.height > 3,
+  );
+  assert.ok(wideLogoSpecs.length > 0, "there should be wide logo specs to test");
+
+  for (const spec of wideLogoSpecs) {
+    const out = await renderOne(square, spec, { padding: 0.08, background: null });
+    const stats = await sharp(out).stats();
+    const coverage = stats.channels[3] ? stats.channels[3].mean / 255 : 1;
+    assert.ok(
+      coverage > 0.99,
+      `${spec.file} should be filled, but only ${Math.round(coverage * 100)}% is covered`,
+    );
+  }
+});
+
+test("a dedicated logo is still fitted whole, never clipped", async () => {
+  const logo = await sharp({
+    create: { width: 900, height: 300, channels: 4, background: { r: 0, g: 220, b: 120, alpha: 1 } },
+  })
+    .png()
+    .toBuffer();
+  const artwork = await sharp({
+    create: { width: 1400, height: 1400, channels: 4, background: { r: 200, g: 90, b: 20, alpha: 1 } },
+  })
+    .png()
+    .toBuffer();
+
+  const files = await renderPack({ artwork, logo }, specsFor({ nks2: false }), {
+    padding: 0.08,
+    background: null,
+  });
+
+  const vbLogo = files.find((f) => f.file === "VB_logo.png")!;
+  const stats = await sharp(vbLogo.buffer).stats();
+  const coverage = stats.channels[3] ? stats.channels[3].mean / 255 : 1;
+  // Letterboxed: a 3:1 logo in a ~4.8:1 box cannot fill it without clipping.
+  assert.ok(
+    coverage < 0.9,
+    `a real logo should be letterboxed, not cropped (coverage ${coverage})`,
+  );
+
+  // The artwork-sourced tile is unaffected and still fills.
+  const art = files.find((f) => f.file === "VB_artwork.png")!;
+  const artStats = await sharp(art.buffer).stats();
+  assert.ok((artStats.channels[3]?.mean ?? 255) / 255 > 0.99);
+});

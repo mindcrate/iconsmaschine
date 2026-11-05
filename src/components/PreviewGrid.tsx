@@ -26,11 +26,20 @@ export function PreviewGrid({
               if (e.key === "Enter" || e.key === " ") onEdit(f);
             }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {/*
+              Wide files were previously capped at 200px wide, which crushed a
+              1280x212 banner to 24px tall. Scale to fit the tile instead, so
+              every file is actually legible.
+              eslint-disable-next-line @next/next/no-img-element
+            */}
             <img
               src={f.dataUrl}
               alt={f.file}
-              style={{ width: Math.min(f.width, 200) }}
+              style={{
+                maxWidth: "100%",
+                maxHeight: 120,
+                width: f.width < 120 ? f.width : undefined,
+              }}
             />
             <span className="edit-hint">adjust crop</span>
           </div>

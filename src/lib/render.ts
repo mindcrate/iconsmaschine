@@ -1,5 +1,5 @@
 import sharp, { type Sharp } from "sharp";
-import type { ImageSpec } from "./spec";
+import type { Fit, ImageSpec } from "./spec";
 import { toPixelRect, type Crop, type CropMap } from "./crop";
 
 export interface RenderOptions {
@@ -9,6 +9,15 @@ export interface RenderOptions {
   padding?: number;
   /** A hand-adjusted crop for this file, overriding the automatic framing. */
   crop?: Crop | null;
+  /**
+   * True when this file is being rendered from a dedicated logo image.
+   *
+   * `contain` exists to stop a logo being clipped. But when the logo files are
+   * derived from the artwork - a photo, with no logo to protect - `contain`
+   * just drops a speck into an empty frame: a square source lands on 14% of a
+   * 227x47 box and 11% of a 417x65 one. So without a real logo, fill instead.
+   */
+  haveLogoSource?: boolean;
 }
 
 const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
@@ -37,6 +46,12 @@ export async function renderOne(
   const background = parseBackground(opts.background);
   const pad = Math.min(Math.max(opts.padding ?? 0, 0), 0.4);
 
+  // A logo spec only earns `contain` when there is an actual logo to protect.
+  const fit: Fit =
+    spec.fit === "contain" && spec.source === "logo" && !opts.haveLogoSource
+      ? "cover"
+      : spec.fit;
+
   let pipeline: Sharp;
 
   if (opts.crop) {
@@ -47,7 +62,7 @@ export async function renderOne(
     pipeline = sharp(source)
       .extract(rect)
       .resize(spec.width, spec.height, { fit: "fill" });
-  } else if (spec.fit === "cover") {
+  } else if (fit === "cover") {
     pipeline = sharp(source).resize(spec.width, spec.height, {
       fit: "cover",
       position: "centre",
@@ -101,11 +116,12 @@ export async function renderPack(
 ): Promise<RenderedFile[]> {
   return Promise.all(
     specs.map(async (spec) => {
-      const source =
-        spec.source === "logo" && sources.logo ? sources.logo : sources.artwork;
+      const useLogo = spec.source === "logo" && Boolean(sources.logo);
+      const source = useLogo ? sources.logo! : sources.artwork;
       const buffer = await renderOne(source, spec, {
         ...opts,
         crop: crops[spec.file] ?? null,
+        haveLogoSource: useLogo,
       });
       return { file: spec.file, buffer, width: spec.width, height: spec.height };
     }),

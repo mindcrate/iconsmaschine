@@ -480,3 +480,6 @@ table.calib td.absent { color: var(--muted); }
   color: var(--accent); border: 1px solid var(--accent-dim); white-space: nowrap;
 }
 .kbadge.has { color: var(--ok); border-color: #2c5138; }
+
+/* Wide files (1280x212 banners, 417x65 logos) need room to be legible. */
+.out-card .canvas { min-height: 110px; }
