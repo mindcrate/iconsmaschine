@@ -15,6 +15,35 @@ export function metaTemplatePath(): string {
   return path.join(iconmaschineHome(), "templates", "library.meta");
 }
 
+/** Records which library the template was copied from. */
+function metaSourcePath(): string {
+  return path.join(iconmaschineHome(), "templates", "library.meta.source");
+}
+
+export async function readMetaSource(): Promise<string | null> {
+  try {
+    const name = (await fs.readFile(metaSourcePath(), "utf8")).trim();
+    return name || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Community guidance says a library's name must also be edited INSIDE its
+ * `.meta`, not only in the filename. If that is true, copying a harvested
+ * template verbatim carries the donor library's name into every pack. We cannot
+ * safely rewrite it without knowing the format (it may be length-prefixed), so
+ * detect the case and surface it rather than silently writing something wrong.
+ */
+export async function metaCarriesForeignName(): Promise<string | null> {
+  const source = await readMetaSource();
+  if (!source) return null;
+  const template = await readMetaTemplate();
+  if (template.length === 0) return null;
+  return template.includes(source) ? source : null;
+}
+
 export async function readMetaTemplate(): Promise<Buffer> {
   try {
     return await fs.readFile(metaTemplatePath());
@@ -32,10 +61,16 @@ export async function hasMetaTemplate(): Promise<boolean> {
   }
 }
 
-export async function saveMetaTemplate(contents: Buffer): Promise<void> {
+export async function saveMetaTemplate(
+  contents: Buffer,
+  sourceLibrary?: string,
+): Promise<void> {
   const target = metaTemplatePath();
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, contents);
+  if (sourceLibrary) {
+    await fs.writeFile(metaSourcePath(), sourceLibrary, "utf8");
+  }
 }
 
 export function metaFileName(vendor: string): string {

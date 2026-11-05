@@ -82,7 +82,7 @@ export async function calibrate(
         try {
           const contents = await fs.readFile(path.join(dir, file.name));
           if (contents.length > 0) {
-            await saveMetaTemplate(contents);
+            await saveMetaTemplate(contents, path.basename(file.name, ".meta"));
             metaSource = path.join(label, file.name);
           }
         } catch (err) {

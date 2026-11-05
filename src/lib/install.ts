@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { niImageDir, packSegments, safeJoin } from "./paths";
-import { metaFileName, readMetaTemplate } from "./meta";
+import { metaCarriesForeignName, metaFileName, readMetaTemplate } from "./meta";
 import type { RenderedFile } from "./render";
 
 export interface PlannedWrite {
@@ -85,6 +85,13 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
       warnings.push(
         `No .meta template harvested yet, so ${metaName} will be written empty. Run Calibrate to copy one from a real NI library.`,
       );
+    } else {
+      const foreign = await metaCarriesForeignName();
+      if (foreign) {
+        warnings.push(
+          `The harvested .meta template still contains the name "${foreign}" inside it. If Maschine reads the name from the file contents rather than the filename, ${metaName} will be wrong. This is unconfirmed - see docs/nks-image-spec.md.`,
+        );
+      }
     }
   }
 

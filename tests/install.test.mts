@@ -109,3 +109,61 @@ test("planInstall reports a missing root instead of throwing", async (t) => {
   assert.equal(plan.rootWritable, false);
   assert.ok(plan.warnings.some((w) => w.includes("does not exist")));
 });
+
+test("warns when the harvested .meta still carries the donor library's name", async (t) => {
+  const root = await tempRoot(t);
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "im-home-"));
+  process.env.ICONMASCHINE_HOME = home;
+  t.after(async () => {
+    delete process.env.ICONMASCHINE_HOME;
+    await fs.rm(home, { recursive: true, force: true });
+  });
+
+  const { saveMetaTemplate } = await import("../src/lib/meta.ts");
+  const { planInstall } = await import("../src/lib/install.ts");
+
+  // A template harvested from "Abbey Road 60s Drummer" that embeds that name.
+  await saveMetaTemplate(
+    Buffer.from("NIKS\u0001\u0000Abbey Road 60s Drummer\u0000", "binary"),
+    "Abbey Road 60s Drummer",
+  );
+
+  const plan = await planInstall({
+    vendor: "Blap Kit",
+    subfolder: null,
+    files,
+    writeMeta: true,
+  });
+
+  assert.ok(
+    plan.warnings.some((w) => w.includes("Abbey Road 60s Drummer")),
+    `expected a foreign-name warning, got: ${JSON.stringify(plan.warnings)}`,
+  );
+  assert.ok(path.resolve(plan.targetDir).startsWith(path.resolve(root)));
+});
+
+test("no foreign-name warning when the template has no embedded name", async (t) => {
+  await tempRoot(t);
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "im-home2-"));
+  process.env.ICONMASCHINE_HOME = home;
+  t.after(async () => {
+    delete process.env.ICONMASCHINE_HOME;
+    await fs.rm(home, { recursive: true, force: true });
+  });
+
+  const { saveMetaTemplate } = await import("../src/lib/meta.ts");
+  const { planInstall } = await import("../src/lib/install.ts");
+
+  await saveMetaTemplate(Buffer.from("opaque binary blob"), "Some Library");
+
+  const plan = await planInstall({
+    vendor: "Blap Kit",
+    subfolder: null,
+    files,
+    writeMeta: true,
+  });
+  assert.equal(
+    plan.warnings.some((w) => w.includes("Some Library")),
+    false,
+  );
+});

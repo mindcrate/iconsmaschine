@@ -46,13 +46,44 @@ shipping an incomplete image set.
   third-party image spec and nothing in this app needs to emit one. Treat any
   write-up that mentions it as stale.
 
-## Still unverified
+## Still unverified — and currently blocking
 
-- **`.meta` contents.** The format is opaque and community guidance is that it
-  is not meant to be edited — only the filename has to match. The app copies a
-  harvested real `.meta` when one is available, and writes an empty file
-  otherwise (which is what the manual tutorials do). This is handled in
-  practice, so it only matters if a pack ever fails to appear in Maschine.
+Installing the images alone does **not** make a third-party *sample kit* show up
+with artwork. Two things beyond this app's current scope appear to be required.
+
+### 1. The `.meta` may carry the library name inside it
+
+Community guidance for the manual method says to rename the `.meta` **and edit
+the name inside it with a text editor**. If true, copying a harvested template
+verbatim writes the donor library's name into every pack.
+
+The app now detects this: Calibrate records which library the template came
+from, and the install plan warns if that name appears in the template bytes.
+It does not rewrite the name, because the format may be length-prefixed and a
+naive substitution would corrupt it.
+
+`scripts/inspect-ni.sh` dumps a real `.meta` so the format can be settled.
+
+### 2. The content must be tagged with a matching Vendor property
+
+This is the bigger one. The images resolve by **Vendor**, not by folder name
+alone: the sounds/groups must carry a Vendor property equal to the folder and
+`.meta` name. For NI-approved Kontakt libraries and plugins that vendor comes
+baked in, which is why those work with images alone. User sample kits have no
+vendor, so nothing resolves to the artwork.
+
+Reported knock-on effects, all unconfirmed:
+
+- Kits only appear in the browser's kit section at all if they are tagged.
+- Some users restored missing artwork by setting the vendor to Native
+  Instruments, which is a workaround rather than a fix.
+- `categories.json` reportedly holds plugin categories and a browser background
+  colour, but the real browser data lives in a `komplete.db3` SQLite database
+  under Application Support. **That database is managed by Maschine and must not
+  be edited directly.**
+
+This makes sample tagging a prerequisite for sample kits, not an optional
+phase 2. Plugin and Kontakt packs are unaffected.
 
 ## Not built yet — sample tagging
 
