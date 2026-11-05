@@ -1,4 +1,10 @@
-import { decoratePrompt, generateArtwork, MissingApiKeyError, type AiSize } from "@/lib/ai";
+import {
+  decoratePrompt,
+  generateArtwork,
+  MissingApiKeyError,
+  NoUsableModelError,
+  type AiSize,
+} from "@/lib/ai";
 import { BadRequest, jsonError } from "@/lib/form";
 
 export const runtime = "nodejs";
@@ -19,7 +25,7 @@ export async function POST(request: Request) {
     const size: AiSize = body.size === "1536x1024" ? "1536x1024" : "1024x1024";
     const quality = body.quality ?? "medium";
 
-    const image = await generateArtwork({
+    const { image, model } = await generateArtwork({
       prompt: decoratePrompt(prompt),
       size,
       quality,
@@ -27,8 +33,11 @@ export async function POST(request: Request) {
 
     return Response.json({
       dataUrl: `data:image/png;base64,${image.toString("base64")}`,
+      model,
     });
   } catch (err) {
-    return jsonError(err, err instanceof MissingApiKeyError ? 400 : 500);
+    const expected =
+      err instanceof MissingApiKeyError || err instanceof NoUsableModelError;
+    return jsonError(err, expected ? 400 : 500);
   }
 }
