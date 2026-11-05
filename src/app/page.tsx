@@ -6,6 +6,7 @@ import { CalibratePanel } from "@/components/CalibratePanel";
 import { InstallPanel } from "@/components/InstallPanel";
 import { LibraryPanel } from "@/components/LibraryPanel";
 import { CropEditor } from "@/components/CropEditor";
+import { PresetEditor } from "@/components/PresetEditor";
 import { PreviewGrid } from "@/components/PreviewGrid";
 import type { Crop, CropMap } from "@/lib/crop";
 import { getJson, sendForm } from "@/lib/client";
@@ -765,6 +766,11 @@ export default function Page() {
             onOpen={openPack}
             onDelete={removePack}
           />
+        </section>
+
+        <section className="step">
+          <h2>Preset tags (GENERAL, TYPES, CHARACTERS)</h2>
+          <PresetEditor />
         </section>
 
         <section className="step">
