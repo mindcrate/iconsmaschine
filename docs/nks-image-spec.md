@@ -307,6 +307,30 @@ cross-referencing every image folder against every bank chain, and lists the
 chains that hold sounds but have no folder - i.e. exactly the kits with no
 artwork, and the folder name each one needs.
 
-**Status: hypothesis, not yet confirmed on real data.** The counts that
-matter are how many image folders match a bank chain versus a vendor. If
-bank-chain matches dominate, the mapping is established.
+### First run: hypothesis not confirmed
+
+Against a real system (551 image folders, 2,583 bank chains):
+
+| | exact lowercase match |
+|---|---|
+| chains matching a folder by **entry1** | 799 |
+| chains matching a folder by **vendor** | 1,178 |
+
+Vendor matched *more*, so "artwork resolves by bank chain" is not established.
+But the comparison was too strict to settle it either way:
+
+- `abbey road 60s drummer` matched; `abbey road 60s drums` matched nothing -
+  the same product under two folder spellings.
+- Official Expansions that certainly ship with artwork (Bumpin Flava, Backyard
+  Jams, Body Mechanik, Neo Boogie, Indigo Dust) came back as having **no image
+  folder**, which is not credible. Far more likely the folder is
+  `bumpin' flava` and the chain is `Bumpin Flava`, so an exact comparison
+  misses it.
+- 386 of 551 folders matched nothing at all. Some of those are artwork for
+  content not installed, which NI ships regardless, but not 70% of them.
+
+So `match-kits.sh` now reports match rates at three strictnesses - exact,
+punctuation-insensitive, and ignoring spaces entirely - and prints the pairs
+that only appear once names are normalised. Those pairs show the rule NI is
+actually applying. Whichever column jumps tells us both the right key and the
+right normalisation.
