@@ -1,6 +1,12 @@
 import sharp, { type Sharp } from "sharp";
 import type { Fit, ImageSpec } from "./spec";
 import { toPixelRect, type Crop, type CropMap } from "./crop";
+import {
+  normaliseHexColor,
+  overlayAppliesTo,
+  renderText,
+  type TextOverlay,
+} from "./overlay";
 
 export interface RenderOptions {
   /** Hex background painted behind `contain` fits and transparent sources. */
@@ -18,6 +24,8 @@ export interface RenderOptions {
    * 227x47 box and 11% of a 417x65 one. So without a real logo, fill instead.
    */
   haveLogoSource?: boolean;
+  /** Text burned over this file, with the artwork dimmed behind it. */
+  overlay?: TextOverlay | null;
 }
 
 const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
@@ -96,6 +104,10 @@ export async function renderOne(
     pipeline = pipeline.flatten({ background });
   }
 
+  if (opts.overlay) {
+    pipeline = await applyOverlay(pipeline, spec, opts.overlay);
+  }
+
   return spec.format === "webp"
     ? pipeline.webp({ quality: 92 }).toBuffer()
     : pipeline.png({ compressionLevel: 9 }).toBuffer();
@@ -122,6 +134,9 @@ export async function renderPack(
         ...opts,
         crop: crops[spec.file] ?? null,
         haveLogoSource: useLogo,
+        overlay: overlayAppliesTo(opts.overlay ?? null, spec.file)
+          ? opts.overlay
+          : null,
       });
       return { file: spec.file, buffer, width: spec.width, height: spec.height };
     }),
@@ -131,4 +146,67 @@ export async function renderPack(
 export async function probe(buffer: Buffer) {
   const { width, height, format } = await sharp(buffer).metadata();
   return { width: width ?? 0, height: height ?? 0, format: format ?? "unknown" };
+}
+
+/**
+ * Composites the overlay: a background layer, the artwork over it at the
+ * chosen opacity, then the text.
+ *
+ * Opacity multiplies the artwork's ALPHA rather than painting black over it.
+ * Veiling with black made the artwork opaque, so a chosen background colour
+ * could never show through - at opacity 0 you got black instead of the colour.
+ *
+ * Done as a fresh pipeline over the rendered bytes rather than more operations
+ * on the existing one, because sharp reorders its operations internally and
+ * this sequence has to happen in order.
+ */
+async function applyOverlay(
+  pipeline: Sharp,
+  spec: ImageSpec,
+  overlay: TextOverlay,
+): Promise<Sharp> {
+  const base = await pipeline.png().toBuffer();
+  const opacity = Math.min(Math.max(overlay.backgroundOpacity, 0), 1);
+
+  const faded =
+    opacity >= 1
+      ? base
+      : await sharp(base)
+          .ensureAlpha()
+          .composite([
+            {
+              // `dest-in` keeps the destination's colour and multiplies its
+              // alpha by the source's - a true fade, not a black wash.
+              input: {
+                create: {
+                  width: spec.width,
+                  height: spec.height,
+                  channels: 4,
+                  background: { r: 255, g: 255, b: 255, alpha: opacity },
+                },
+              },
+              blend: "dest-in",
+            },
+          ])
+          .png()
+          .toBuffer();
+
+  const canvas = overlay.backgroundColor
+    ? sharp({
+        create: {
+          width: spec.width,
+          height: spec.height,
+          channels: 4,
+          background: normaliseHexColor(overlay.backgroundColor, "#000000"),
+        },
+      }).composite([{ input: faded, blend: "over" }])
+    : sharp(faded);
+
+  const text = await renderText(overlay, spec.width, spec.height);
+  const flat = sharp(await canvas.png().toBuffer());
+  if (!text) return flat;
+
+  return flat.composite([
+    { input: text.buffer, left: text.left, top: text.top, blend: "over" },
+  ]);
 }
