@@ -189,3 +189,88 @@ export async function install(input: InstallInput): Promise<InstallResult> {
 
   return { imageDir, distDbDir, written };
 }
+
+
+export interface UninstallResult {
+  removed: string[];
+  /** Folders left in place because they held files this app did not write. */
+  keptFolders: string[];
+}
+
+/**
+ * Remove a pack's installed files.
+ *
+ * Deliberately conservative: it deletes only the exact filenames this app
+ * writes, then removes a folder only once it is empty. A folder holding
+ * anything else - a real NI library that happens to share a name - is left
+ * alone and reported.
+ */
+export async function uninstall(input: InstallInput): Promise<UninstallResult> {
+  const imageRoot = niImageDir();
+  const distDbRoot = niDistDatabaseDir();
+  const { imageSegments, imageFiles, distDbFiles } = buildFileSet(input);
+
+  const removed: string[] = [];
+  const keptFolders: string[] = [];
+
+  const clean = async (
+    dir: string,
+    names: string[],
+    label: string,
+  ): Promise<void> => {
+    let present: string[];
+    try {
+      present = await fs.readdir(dir);
+    } catch {
+      return; // nothing installed there
+    }
+    for (const name of names) {
+      if (!present.includes(name)) continue;
+      await fs.rm(safeJoin(dir, name), { force: true });
+      removed.push(path.join(label, name));
+    }
+    const left = await fs.readdir(dir).catch(() => [] as string[]);
+    const ignorable = left.filter((f) => f !== ".DS_Store");
+    if (ignorable.length === 0) {
+      await fs.rm(path.join(dir, ".DS_Store"), { force: true });
+      await fs.rmdir(dir).catch(() => {});
+    } else {
+      keptFolders.push(`${dir} (still holds ${ignorable.length} other file(s))`);
+    }
+  };
+
+  await clean(
+    safeJoin(imageRoot, ...imageSegments),
+    imageFiles.map((f) => f.file),
+    path.join("image", ...imageSegments),
+  );
+
+  if (input.distDb) {
+    const vendorFolder = folderName(input.distDb.vendor);
+    const productFolder = folderName(input.product);
+    await clean(
+      safeJoin(distDbRoot, vendorFolder, productFolder),
+      distDbFiles.map((f) => f.file),
+      path.join("dist_database", vendorFolder, productFolder),
+    );
+    // Drop the vendor folder too, if nothing else lives in it.
+    const vendorDir = safeJoin(distDbRoot, vendorFolder);
+    const left = await fs.readdir(vendorDir).catch(() => ["keep"]);
+    if (left.filter((f) => f !== ".DS_Store").length === 0) {
+      await fs.rm(path.join(vendorDir, ".DS_Store"), { force: true });
+      await fs.rmdir(vendorDir).catch(() => {});
+    }
+  }
+
+  // Same for a plugin's image vendor folder.
+  if (imageSegments.length > 1) {
+    const vendorDir = safeJoin(imageRoot, imageSegments[0]);
+    const left = await fs.readdir(vendorDir).catch(() => ["keep"]);
+    if (left.filter((f) => f !== ".DS_Store").length === 0) {
+      await fs.rm(path.join(vendorDir, ".DS_Store"), { force: true });
+      await fs.rmdir(vendorDir).catch(() => {});
+    }
+  }
+
+  return { removed, keptFolders };
+}

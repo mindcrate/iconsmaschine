@@ -213,3 +213,63 @@ test("image-only packs warn that a Vendor property is still required", async (t)
     `expected the vendor caveat, got ${JSON.stringify(plan.warnings)}`,
   );
 });
+
+test("uninstall removes only this app's files and prunes empty folders", async (t) => {
+  const { image, distDb } = await tempRoot(t);
+  const { install, uninstall } = await import("../src/lib/install.ts");
+  const input = {
+    product: "SubLab",
+    vendor: "FutureAudioWorkshop",
+    files,
+    distDb: DISTDB,
+  };
+
+  await install(input);
+  const result = await uninstall(input);
+
+  assert.equal(result.removed.length, 7);
+  assert.equal(result.keptFolders.length, 0);
+  // Both vendor folders should be gone, not just the leaves.
+  for (const p of [
+    path.join(image, "futureaudioworkshop"),
+    path.join(distDb, "futureaudioworkshop"),
+  ]) {
+    assert.equal(
+      await fs.access(p).then(() => true).catch(() => false),
+      false,
+      `${p} should have been pruned`,
+    );
+  }
+});
+
+test("uninstall refuses to delete a folder holding files it did not write", async (t) => {
+  const { image } = await tempRoot(t);
+  const { install, uninstall } = await import("../src/lib/install.ts");
+  const input = { product: "Amplified Funk", vendor: "", files, distDb: null };
+
+  await install(input);
+  // Something precious that this app never created.
+  const stranger = path.join(image, "amplified funk", "NOT_OURS.png");
+  await fs.writeFile(stranger, "keep me");
+
+  const result = await uninstall(input);
+
+  await fs.access(stranger); // still there
+  assert.equal(await fs.readFile(stranger, "utf8"), "keep me");
+  assert.ok(
+    result.keptFolders.some((k) => k.includes("amplified funk")),
+    `expected the folder to be reported as kept, got ${JSON.stringify(result.keptFolders)}`,
+  );
+});
+
+test("uninstall is a no-op when nothing is installed", async (t) => {
+  await tempRoot(t);
+  const { uninstall } = await import("../src/lib/install.ts");
+  const result = await uninstall({
+    product: "Never Installed",
+    vendor: "",
+    files,
+    distDb: null,
+  });
+  assert.deepEqual(result.removed, []);
+});

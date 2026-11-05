@@ -278,6 +278,11 @@ export default function Page() {
                     {vendorError}
                   </div>
                 )}
+                <div style={{ color: "var(--muted)", fontSize: 11.5, marginTop: 5 }}>
+                  Must match the vendor <em>exactly</em> as Maschine groups it in
+                  the plugin browser - &quot;Xfer Records&quot;, not
+                  &quot;Xfer&quot;. Check the group heading above your plugin.
+                </div>
               </div>
             )}
 

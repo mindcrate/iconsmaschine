@@ -4,11 +4,40 @@ import { useState } from "react";
 import { formatBytes, postJson } from "@/lib/client";
 import type { InstallPlan, InstallResult } from "@/lib/types";
 
+interface UninstallResult {
+  removed: string[];
+  keptFolders: string[];
+}
+
 export function InstallPanel({ packId }: { packId: string }) {
   const [plan, setPlan] = useState<InstallPlan | null>(null);
   const [result, setResult] = useState<InstallResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [removed, setRemoved] = useState<UninstallResult | null>(null);
+
+  async function remove() {
+    if (
+      !confirm(
+        "Remove this pack's files from NI Resources?\n\nOnly files this app wrote are deleted. Anything else in those folders is left alone.",
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/packs/${packId}/install`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Could not remove the pack.");
+      setRemoved(json.result as UninstallResult);
+      setResult(null);
+      setPlan(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function run(dryRun: boolean) {
     setBusy(true);
@@ -40,9 +69,30 @@ export function InstallPanel({ packId }: { packId: string }) {
         <a className="btn ghost" href={`/api/packs/${packId}/export`}>
           Download .zip instead
         </a>
+        <button className="btn ghost" onClick={remove} disabled={busy}>
+          Remove from NI Resources
+        </button>
       </div>
 
       {error && <div className="note bad">{error}</div>}
+
+      {removed && (
+        <div className="note good">
+          Removed {removed.removed.length} file
+          {removed.removed.length === 1 ? "" : "s"}.
+          {removed.keptFolders.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              Left these folders in place because they hold files this app did
+              not write:
+              <div style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginTop: 4 }}>
+                {removed.keptFolders.map((k) => (
+                  <div key={k}>{k}</div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {plan && (
         <>

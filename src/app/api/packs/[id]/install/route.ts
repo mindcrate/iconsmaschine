@@ -1,6 +1,6 @@
 import { buildPack, distDbInputFor, PackNotFound } from "@/lib/build";
 import { jsonError } from "@/lib/form";
-import { install, planInstall } from "@/lib/install";
+import { install, planInstall, uninstall } from "@/lib/install";
 
 export const runtime = "nodejs";
 
@@ -36,6 +36,23 @@ export async function POST(request: Request, { params }: Ctx) {
     }
 
     return Response.json({ plan, result: await install(input) });
+  } catch (err) {
+    return jsonError(err, err instanceof PackNotFound ? 404 : 500);
+  }
+}
+
+/** Removes a pack's installed files, so a mis-named pack can be retried clean. */
+export async function DELETE(_request: Request, { params }: Ctx) {
+  try {
+    const { id } = await params;
+    const { pack, files } = await buildPack(id);
+    const result = await uninstall({
+      product: pack.product,
+      vendor: pack.vendor,
+      files,
+      distDb: distDbInputFor(pack),
+    });
+    return Response.json({ result });
   } catch (err) {
     return jsonError(err, err instanceof PackNotFound ? 404 : 500);
   }

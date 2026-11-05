@@ -128,6 +128,15 @@ pick these up.
 That mirrors the installed set: 7 plugin vendors in `dist_database` against 547
 folders in `image`.
 
+### The vendor string has to match exactly
+
+In Maschine's plugin browser, the heading above your plugin is the vendor it
+will match on. Use that verbatim — `Xfer Records`, not `Xfer`; `iZotope Inc`,
+not `iZotope`. A near-miss installs cleanly and shows no artwork at all.
+
+Got it wrong? **Remove from NI Resources** on the pack deletes only the files
+this app wrote, then rebuild with the corrected name.
+
 ### Artwork still needs a matching Vendor
 
 For anything without a dist_database entry, the images resolve by the **Vendor

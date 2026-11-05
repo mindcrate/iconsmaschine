@@ -102,6 +102,35 @@ name exactly — `iZotope`, not `iZotope Inc`.
 The JSON key names and the precise `.meta` layout must be read from real factory
 entries rather than guessed. `scripts/inspect-ni.sh` dumps them verbatim.
 
+## The vendor string must match what Maschine displays
+
+The single most common failure: the folder/Vendor value is the vendor's short
+name while Maschine knows it by its full name.
+
+A real case - Serum installed as:
+
+```
+image/xfer/serum/          dist_database/xfer/serum/     Vendor: "Xfer"
+```
+
+and no artwork appeared, because Maschine groups the plugin under
+**"Xfer Records"**. The correct install is:
+
+```
+image/xfer records/serum/  dist_database/xfer records/serum/
+                                                         Vendor: "Xfer Records"
+```
+
+The walkthrough warns about the same trap with "iZotope" vs "iZotope Inc".
+
+**How to read the right string:** in Maschine's plugin browser, the group
+heading above the plugin is the vendor Maschine will match on. Use it verbatim,
+including spaces and any "Records" / "Inc" / "Audio" suffix.
+
+Either side can be made to match - change the pack to the plugin's vendor, or
+change the preset's Vendor property (browser → Edit → properties). Matching the
+plugin's own string is less work and survives re-saving presets.
+
 ## Not built yet — sample tagging
 
 The image pack is only half of what makes third-party content look native in the
