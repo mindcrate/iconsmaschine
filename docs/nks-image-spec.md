@@ -131,20 +131,39 @@ Either side can be made to match - change the pack to the plugin's vendor, or
 change the preset's Vendor property (browser → Edit → properties). Matching the
 plugin's own string is less work and survives re-saving presets.
 
-## Not built yet — sample tagging
+## Not built yet — preset metadata (.nksf)
 
-The image pack is only half of what makes third-party content look native in the
-Maschine browser. The other half is metadata: Bank / Type / Sub-Type / Mode /
-Character tags, which drive the browser's filter columns.
+Everything on the GENERAL, TYPES and CHARACTERS tabs of Maschine's preset
+editor lives inside the **preset file**, not in `dist_database`:
 
-That lives in the sample and preset files themselves (`.nksf` / `.nksn` chunks
-and the Maschine browser database), not in `NI Resources/image`, so it is a
-genuinely separate subsystem — a different file format, a different install
-location, and destructive to get wrong since it rewrites the user's sample files.
+| Shown in Maschine | Lives in |
+|---|---|
+| Plugin's vendor group, category, colour, short name | `dist_database/.../*.json` + `.meta` — **built** |
+| Preset's Vendor and Product (GENERAL) | the `.nksf` file — not built |
+| TYPES (Beatbox, Best Of, Birds …) | the `.nksf` file — not built |
+| CHARACTERS (Acoustic, Additive …) | the `.nksf` file — not built |
 
-Scope when it gets built:
+So a preset can keep showing the wrong vendor — "Native Instruments" on a
+Sonic Charge Microtonic preset, for instance — however correct the
+dist_database entry is. The two are independent, and the preset wins for
+anything on those tabs.
 
-- Read existing tags from `.nksf` / `.nksn` files and show them.
-- Bulk-apply Bank / Type / Sub-Type / Mode / Character across a folder.
-- Write to a copy by default; never edit originals in place without opt-in.
-- Validate against NI's controlled tag vocabulary rather than free text.
+Some plugins also show **two lines** under GENERAL (e.g. "Sonic Charge" then
+"Microtonic") where most show one. That is probably the `bankchain` — a
+vendor/product hierarchy — rather than a single product string.
+
+### Before writing presets
+
+`.nksf` is a chunked container with JSON metadata inside. `scripts/inspect-nksf.sh`
+dumps the chunk tags and pretty-prints every embedded JSON block, read-only.
+
+Writing to presets is destructive in a way nothing else here is: these are the
+user's own files, and a bad write loses work. Requirements when it is built:
+
+- Write to a copy, and only overwrite in place on an explicit opt-in.
+- Preserve every chunk that is not being edited, byte for byte.
+- Round-trip test: parse → write with no changes → assert identical bytes.
+- Validate Types and Characters against NI's controlled vocabulary, harvested
+  the same way the plugin categories were.
+- Re-saving a preset from the plugin can revert these fields, so the tool needs
+  to be re-runnable over a folder.
