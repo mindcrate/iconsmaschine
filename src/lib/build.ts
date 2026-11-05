@@ -1,6 +1,7 @@
 import { renderPack, type RenderedFile } from "./render";
 import { specsFor } from "./spec";
-import { readPack, readSources, type Pack } from "./store";
+import { needsDistDb, readPack, readSources, type Pack } from "./store";
+import type { DistDbInput } from "./distdb";
 
 export class PackNotFound extends Error {
   constructor() {
@@ -28,4 +29,17 @@ export async function buildPack(
   );
 
   return { pack, files };
+}
+
+/** The dist_database payload for a pack, or null when its type does not use one. */
+export function distDbInputFor(pack: Pack): DistDbInput | null {
+  if (!needsDistDb(pack)) return null;
+  return {
+    vendor: pack.vendor,
+    product: pack.product,
+    fileType: pack.fileType,
+    categories: pack.categories,
+    bgColor: pack.bgColor,
+    shortName: pack.shortName,
+  };
 }

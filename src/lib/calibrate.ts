@@ -3,7 +3,6 @@ import path from "node:path";
 import sharp from "sharp";
 import { niImageDir } from "./paths";
 import { IMAGE_SPECS } from "./spec";
-import { saveMetaTemplate } from "./meta";
 
 export interface Observation {
   file: string;
@@ -17,7 +16,6 @@ export interface CalibrationResult {
   scannedRoot: string;
   libraries: string[];
   observations: Observation[];
-  metaTemplateHarvestedFrom: string | null;
   errors: string[];
 }
 
@@ -31,14 +29,11 @@ const MAX_DEPTH = 2;
  * dimensions they actually use. This is the ground truth for the two things the
  * public docs don't cover: VB_logo.png's size, and what a real `.meta` contains.
  */
-export async function calibrate(
-  opts: { harvestMeta?: boolean } = {},
-): Promise<CalibrationResult> {
+export async function calibrate(): Promise<CalibrationResult> {
   const root = niImageDir();
   const errors: string[] = [];
   const libraries: string[] = [];
   const seen = new Map<string, Map<string, number>>();
-  let metaSource: string | null = null;
 
   let entries: import("node:fs").Dirent[];
   try {
@@ -48,7 +43,6 @@ export async function calibrate(
       scannedRoot: root,
       libraries: [],
       observations: [],
-      metaTemplateHarvestedFrom: null,
       errors: [`Could not read ${root}: ${(err as Error).message}`],
     };
   }
@@ -76,18 +70,6 @@ export async function calibrate(
           );
         }
         continue;
-      }
-
-      if (opts.harvestMeta && !metaSource && file.name.endsWith(".meta")) {
-        try {
-          const contents = await fs.readFile(path.join(dir, file.name));
-          if (contents.length > 0) {
-            await saveMetaTemplate(contents, path.basename(file.name, ".meta"));
-            metaSource = path.join(label, file.name);
-          }
-        } catch (err) {
-          errors.push(`${label}/${file.name}: ${(err as Error).message}`);
-        }
       }
 
       if (!KNOWN_FILES.has(file.name)) continue;
@@ -133,7 +115,6 @@ export async function calibrate(
     scannedRoot: root,
     libraries,
     observations,
-    metaTemplateHarvestedFrom: metaSource,
     errors,
   };
 }

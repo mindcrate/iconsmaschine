@@ -9,6 +9,16 @@ export function niImageDir(): string {
   return override ? expandHome(override) : DEFAULT_NI_IMAGE_DIR;
 }
 
+/**
+ * `dist_database` sits beside `image` under NI Resources. Plugins need an entry
+ * in both; expansions and sample kits only appear in `image`.
+ */
+export function niDistDatabaseDir(): string {
+  const override = process.env.NI_RESOURCES_DIST_DB_DIR;
+  if (override) return expandHome(override);
+  return path.join(path.dirname(niImageDir()), "dist_database");
+}
+
 export function iconmaschineHome(): string {
   const override = process.env.ICONMASCHINE_HOME;
   return override

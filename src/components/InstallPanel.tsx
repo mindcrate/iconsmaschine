@@ -47,23 +47,38 @@ export function InstallPanel({ packId }: { packId: string }) {
       {plan && (
         <>
           <div className="path-preview" style={{ marginTop: 16 }}>
-            {plan.root}/<b>{plan.relativeDir}</b>/
+            {plan.imageRoot}/<b>{plan.imageDir.split("/").pop()}</b>/
           </div>
+          {plan.distDbDir && (
+            <div className="path-preview" style={{ marginTop: 8 }}>
+              {plan.distDbRoot}/
+              <b>{plan.distDbDir.split("/").slice(-2).join("/")}</b>/
+            </div>
+          )}
 
-          <div className="plan">
-            {plan.writes.map((w) => (
-              <div key={w.file}>
-                <span className="path">{w.file}</span>
-                <span className="state">{formatBytes(w.bytes)}</span>
-                <span className={w.existing ? "state overwrite" : "state"}>
-                  {w.existing ? "overwrites existing" : "new"}
-                </span>
+          {(["image", "dist_database"] as const).map((tree) => {
+            const rows = plan.writes.filter((w) => w.tree === tree);
+            if (rows.length === 0) return null;
+            return (
+              <div key={tree}>
+                <div className="tree-label">{tree}/</div>
+                <div className="plan">
+                  {rows.map((w) => (
+                    <div key={`${tree}/${w.file}`}>
+                      <span className="path">{w.file}</span>
+                      <span className="state">{formatBytes(w.bytes)}</span>
+                      <span className={w.existing ? "state overwrite" : "state"}>
+                        {w.existing ? "overwrites existing" : "new"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
 
           {plan.warnings.map((w) => (
-            <div className="note bad" key={w}>
+            <div className="note" key={w}>
               {w}
             </div>
           ))}
@@ -91,8 +106,20 @@ export function InstallPanel({ packId }: { packId: string }) {
 
       {result && (
         <div className="note good">
-          Installed {result.written.length} files to <code>{result.targetDir}</code>.
-          Restart Maschine (or rescan the browser) to see them.
+          Installed {result.written.length} files.
+          <div style={{ marginTop: 6, fontFamily: "var(--mono)", fontSize: 12 }}>
+            {result.imageDir}
+            {result.distDbDir && (
+              <>
+                <br />
+                {result.distDbDir}
+              </>
+            )}
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <strong>Fully quit and relaunch Maschine</strong> - a browser rescan
+            alone often does not pick these up.
+          </div>
         </div>
       )}
     </div>

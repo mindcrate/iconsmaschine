@@ -51,15 +51,14 @@ export function readPackFields(
   const info = KIT_TYPES.find((k) => k.id === kitType);
   if (!info) throw new BadRequest(`Unknown kit type: ${kitType || "(none)"}`);
 
-  const vendor = str(form, "vendor");
-  const vendorError = validateFolderName(vendor);
-  if (vendorError) throw new BadRequest(`Folder name: ${vendorError}`);
+  const product = str(form, "product").trim();
+  const productError = validateFolderName(product);
+  if (productError) throw new BadRequest(`Product name: ${productError}`);
 
-  let subfolder: string | null = str(form, "subfolder").trim() || null;
-  if (subfolder && !info.usesSubfolder) subfolder = null;
-  if (subfolder) {
-    const subError = validateFolderName(subfolder);
-    if (subError) throw new BadRequest(`Subfolder name: ${subError}`);
+  const vendor = str(form, "vendor").trim();
+  if (info.usesDistDb) {
+    const vendorError = validateFolderName(vendor);
+    if (vendorError) throw new BadRequest(`Vendor name: ${vendorError}`);
   }
 
   const paddingRaw = Number(str(form, "padding", "0.08"));
@@ -72,19 +71,37 @@ export function readPackFields(
     throw new BadRequest("Background must be a 6-digit hex colour, e.g. #101010.");
   }
 
+  const bgColor = str(form, "bgColor").trim() || "000000";
+  if (!/^#?[0-9a-f]{6}$/i.test(bgColor)) {
+    throw new BadRequest("Browser colour must be a 6-digit hex colour.");
+  }
+
+  const fileType = str(form, "fileType").trim() || "Instruments";
+  const categories = str(form, "categories")
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+  if (info.usesDistDb && categories.length === 0) {
+    throw new BadRequest("Pick at least one category for a plugin.");
+  }
+
   const tags = str(form, "tags")
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
 
   return {
-    name: str(form, "name").trim() || subfolder || vendor,
+    name: str(form, "name").trim() || product,
     kitType,
     vendor,
-    subfolder,
+    product,
     nks2: bool(form, "nks2"),
     background,
     padding,
+    fileType,
+    categories,
+    shortName: str(form, "shortName").trim() || null,
+    bgColor: bgColor.replace(/^#/, "").toLowerCase(),
     author: str(form, "author").trim(),
     share: bool(form, "share"),
     tags,

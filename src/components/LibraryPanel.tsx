@@ -36,8 +36,8 @@ export function LibraryPanel({
               )}
             </strong>
             <span>
-              {pack.vendor}
-              {pack.subfolder ? ` / ${pack.subfolder}` : ""}
+              {pack.vendor ? `${pack.vendor} / ` : ""}
+              {pack.product}
             </span>
             {pack.tags.length > 0 && (
               <div className="lib-tags">

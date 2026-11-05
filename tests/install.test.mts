@@ -4,14 +4,17 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+/** Points both NI trees at a scratch dir for the duration of one test. */
 async function tempRoot(t: { after: (fn: () => unknown) => void }) {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "im-ni-"));
-  process.env.NI_RESOURCES_IMAGE_DIR = dir;
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), "im-ni-"));
+  const image = path.join(base, "image");
+  await fs.mkdir(image, { recursive: true });
+  process.env.NI_RESOURCES_IMAGE_DIR = image;
   t.after(async () => {
     delete process.env.NI_RESOURCES_IMAGE_DIR;
-    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(base, { recursive: true, force: true });
   });
-  return dir;
+  return { base, image, distDb: path.join(base, "dist_database") };
 }
 
 const files = [
@@ -19,72 +22,143 @@ const files = [
   { file: "VB_artwork.png", buffer: Buffer.from("vb"), width: 96, height: 47 },
 ];
 
-test("install writes the pack into the vendor folder", async (t) => {
-  const root = await tempRoot(t);
+const DISTDB = {
+  vendor: "FutureAudioWorkshop",
+  product: "SubLab",
+  fileType: "Instruments",
+  categories: ["Synthesizers"],
+  bgColor: "f4b021",
+  shortName: null,
+};
+
+test("an image-only pack writes artwork plus a generated image .meta", async (t) => {
+  const { image } = await tempRoot(t);
   const { install, planInstall } = await import("../src/lib/install.ts");
 
-  const input = { vendor: "Blap Kit", subfolder: null, files, writeMeta: true };
+  const input = {
+    product: "Amplified Funk",
+    vendor: "",
+    files,
+    distDb: null,
+  };
 
   const plan = await planInstall(input);
   assert.equal(plan.rootExists, true);
   assert.equal(plan.rootWritable, true);
+  assert.equal(plan.distDbDir, null);
   assert.equal(plan.writes.length, 3, "two images plus the .meta");
-  assert.ok(plan.writes.every((w) => w.existing === null), "nothing exists yet");
+  assert.ok(plan.writes.every((w) => w.tree === "image"));
 
-  const result = await install(input);
-  assert.equal(
-    await fs.readFile(path.join(root, "Blap Kit", "MST_artwork.png"), "utf8"),
-    "artwork",
-  );
-  await fs.access(path.join(root, "Blap Kit", "Blap Kit.meta"));
-  assert.equal(result.written.length, 3);
+  await install(input);
+
+  // Folder is lowercased; the XML inside keeps the display casing.
+  const dir = path.join(image, "amplified funk");
+  const meta = await fs.readFile(path.join(dir, "amplified funk.meta"), "utf8");
+  assert.ok(meta.includes("<name>Amplified Funk</name>"));
+  assert.ok(meta.includes("<type>image</type>"));
+  assert.equal(meta.includes("<vendor>"), false);
+  assert.equal(await fs.readFile(path.join(dir, "MST_artwork.png"), "utf8"), "artwork");
 });
 
-test("plugin packs nest under the vendor, with the .meta at vendor level", async (t) => {
-  const root = await tempRoot(t);
+test("a plugin pack writes both trees, nesting dist_database by vendor", async (t) => {
+  const { image, distDb } = await tempRoot(t);
   const { install } = await import("../src/lib/install.ts");
 
-  await install({
-    vendor: "Sugar Bytes",
-    subfolder: "Looperator",
+  const result = await install({
+    product: "SubLab",
+    vendor: "FutureAudioWorkshop",
     files,
-    writeMeta: true,
+    distDb: DISTDB,
   });
 
-  await fs.access(path.join(root, "Sugar Bytes", "Looperator", "MST_artwork.png"));
-  await fs.access(path.join(root, "Sugar Bytes", "Sugar Bytes.meta"));
+  // image/ is FLAT - product only, no vendor folder.
+  await fs.access(path.join(image, "sublab", "MST_artwork.png"));
+  await fs.access(path.join(image, "sublab", "sublab.meta"));
+  assert.equal(
+    await fs
+      .access(path.join(image, "futureaudioworkshop"))
+      .then(() => true)
+      .catch(() => false),
+    false,
+    "image/ must not be nested by vendor",
+  );
+
+  // dist_database/ IS nested.
+  const dd = path.join(distDb, "futureaudioworkshop", "sublab");
+  for (const f of ["categories.json", "color.json", "shortname.json", "sublab.meta"]) {
+    await fs.access(path.join(dd, f));
+  }
+
+  const cats = JSON.parse(await fs.readFile(path.join(dd, "categories.json"), "utf8"));
+  assert.equal(cats.Vendor, "FutureAudioWorkshop");
+  assert.equal(cats.CategoryDB[0].Categories[0], "Synthesizers");
+
+  const meta = await fs.readFile(path.join(dd, "sublab.meta"), "utf8");
+  assert.ok(meta.includes("<vendor>FutureAudioWorkshop</vendor>"));
+  assert.ok(meta.includes("<type>dist_database</type>"));
+
+  assert.equal(result.written.length, 7);
+  assert.ok(result.distDbDir);
+});
+
+test("the two .meta files are not interchangeable", async (t) => {
+  const { image, distDb } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+  await install({
+    product: "SubLab",
+    vendor: "FutureAudioWorkshop",
+    files,
+    distDb: DISTDB,
+  });
+
+  const imageMeta = await fs.readFile(path.join(image, "sublab", "sublab.meta"), "utf8");
+  const ddMeta = await fs.readFile(
+    path.join(distDb, "futureaudioworkshop", "sublab", "sublab.meta"),
+    "utf8",
+  );
+  assert.notEqual(imageMeta, ddMeta);
+  assert.ok(imageMeta.includes("<type>image</type>"));
+  assert.ok(ddMeta.includes("<type>dist_database</type>"));
 });
 
 test("a second install reports the files it would overwrite", async (t) => {
-  const root = await tempRoot(t);
+  await tempRoot(t);
   const { install, planInstall } = await import("../src/lib/install.ts");
-  const input = { vendor: "Exhale", subfolder: null, files, writeMeta: false };
+  const input = { product: "Exhale", vendor: "", files, distDb: null };
 
   await install(input);
   const plan = await planInstall(input);
-  assert.equal(plan.writes.length, 2);
   assert.ok(
     plan.writes.every((w) => w.existing !== null),
     "every write should be flagged as an overwrite",
   );
-  assert.equal(path.resolve(plan.targetDir), path.resolve(root, "Exhale"));
 });
 
-test("install refuses folder names that climb out of the root", async (t) => {
+test("install refuses names that climb out of the root", async (t) => {
   await tempRoot(t);
   const { install } = await import("../src/lib/install.ts");
 
   await assert.rejects(
-    () => install({ vendor: "..", subfolder: null, files, writeMeta: false }),
+    () => install({ product: "..", vendor: "", files, distDb: null }),
     /Invalid folder name/,
   );
   await assert.rejects(
     () =>
       install({
-        vendor: "Vendor",
-        subfolder: "../../escape",
+        product: "../../escape",
+        vendor: "",
         files,
-        writeMeta: false,
+        distDb: null,
+      }),
+    /path separators/,
+  );
+  await assert.rejects(
+    () =>
+      install({
+        product: "Fine",
+        vendor: "x",
+        files,
+        distDb: { ...DISTDB, vendor: "../../escape" },
       }),
     /path separators/,
   );
@@ -93,77 +167,33 @@ test("install refuses folder names that climb out of the root", async (t) => {
 test("planInstall reports a missing root instead of throwing", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "im-gone-"));
   await fs.rm(dir, { recursive: true, force: true });
-  process.env.NI_RESOURCES_IMAGE_DIR = dir;
+  process.env.NI_RESOURCES_IMAGE_DIR = path.join(dir, "image");
   t.after(() => {
     delete process.env.NI_RESOURCES_IMAGE_DIR;
   });
 
   const { planInstall } = await import("../src/lib/install.ts");
   const plan = await planInstall({
-    vendor: "Blap Kit",
-    subfolder: null,
+    product: "Blap Kit",
+    vendor: "",
     files,
-    writeMeta: false,
+    distDb: null,
   });
   assert.equal(plan.rootExists, false);
-  assert.equal(plan.rootWritable, false);
   assert.ok(plan.warnings.some((w) => w.includes("does not exist")));
 });
 
-test("warns when the harvested .meta still carries the donor library's name", async (t) => {
-  const root = await tempRoot(t);
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), "im-home-"));
-  process.env.ICONMASCHINE_HOME = home;
-  t.after(async () => {
-    delete process.env.ICONMASCHINE_HOME;
-    await fs.rm(home, { recursive: true, force: true });
-  });
-
-  const { saveMetaTemplate } = await import("../src/lib/meta.ts");
-  const { planInstall } = await import("../src/lib/install.ts");
-
-  // A template harvested from "Abbey Road 60s Drummer" that embeds that name.
-  await saveMetaTemplate(
-    Buffer.from("NIKS\u0001\u0000Abbey Road 60s Drummer\u0000", "binary"),
-    "Abbey Road 60s Drummer",
-  );
-
-  const plan = await planInstall({
-    vendor: "Blap Kit",
-    subfolder: null,
-    files,
-    writeMeta: true,
-  });
-
-  assert.ok(
-    plan.warnings.some((w) => w.includes("Abbey Road 60s Drummer")),
-    `expected a foreign-name warning, got: ${JSON.stringify(plan.warnings)}`,
-  );
-  assert.ok(path.resolve(plan.targetDir).startsWith(path.resolve(root)));
-});
-
-test("no foreign-name warning when the template has no embedded name", async (t) => {
+test("image-only packs warn that a Vendor property is still required", async (t) => {
   await tempRoot(t);
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), "im-home2-"));
-  process.env.ICONMASCHINE_HOME = home;
-  t.after(async () => {
-    delete process.env.ICONMASCHINE_HOME;
-    await fs.rm(home, { recursive: true, force: true });
-  });
-
-  const { saveMetaTemplate } = await import("../src/lib/meta.ts");
   const { planInstall } = await import("../src/lib/install.ts");
-
-  await saveMetaTemplate(Buffer.from("opaque binary blob"), "Some Library");
-
   const plan = await planInstall({
-    vendor: "Blap Kit",
-    subfolder: null,
+    product: "Blap Kit",
+    vendor: "",
     files,
-    writeMeta: true,
+    distDb: null,
   });
-  assert.equal(
-    plan.warnings.some((w) => w.includes("Some Library")),
-    false,
+  assert.ok(
+    plan.warnings.some((w) => w.includes("Vendor property")),
+    `expected the vendor caveat, got ${JSON.stringify(plan.warnings)}`,
   );
 });

@@ -61,9 +61,11 @@ and reports the sizes they actually use, so the built-in spec can be checked
 against reality rather than against a forum post. It also copies a real `.meta`
 file to use as the template for your packs.
 
-Run it once before your first install. Without a harvested template, the `.meta`
-is written empty — which the manual tutorials say works, but a real one is
-better.
+Run it once before your first install.
+
+The plugin category list is also read from your installed `dist_database`
+entries, so the options offered are the exact strings Maschine already accepts
+rather than a guess.
 
 The table shows every distinct size found per file, with how many libraries use
 each, so a split distribution is visible rather than averaged away. If anything
@@ -72,23 +74,55 @@ disagrees with the built-in spec, your libraries are the ground truth: update
 
 ## Where things go
 
-Installs to `/Users/Shared/NI Resources/image/<Folder>/` on macOS. On Windows
-the equivalent is `C:\Users\Public\Documents\NI Resources\image\<Folder>\` — set
-`NI_RESOURCES_IMAGE_DIR` to point there.
-
-Plugin packs with a subfolder nest one level, with the `.meta` at the vendor
-level:
+Maschine needs **two** folders per product, not one. Images alone resolve to
+nothing.
 
 ```
-NI Resources/image/
-  Sugar Bytes/
-    Sugar Bytes.meta
-    Looperator/
-      MST_artwork.png
-      ...
+/Users/Shared/NI Resources/
+  image/<product>/                      <- FLAT, one folder per product
+      MST_*.png  VB_*.png  OSO_logo.png  NKS2_*.webp
+      <product>.meta                    XML: name + type "image"
+
+  dist_database/<vendor>/<product>/     <- NESTED by vendor, plugins only
+      categories.json                   vendor, product, file type, categories
+      color.json                        { "VB_bgcolor" : "f4b021" }
+      shortname.json                    one short name per hardware generation
+      <product>.meta                    XML: vendor + name + type "dist_database"
 ```
 
-Restart Maschine after installing for the browser to pick the images up.
+Folder names are **lowercased**, matching how NI stores them (`amplified funk`,
+`futureaudioworkshop/sublab`). The properly cased name goes inside the `.meta`
+and JSON files.
+
+The two `.meta` files are not interchangeable — `<type>` names the tree the file
+sits in, and only the dist_database one carries `<vendor>`. Both are generated
+from scratch.
+
+On Windows the root is `C:\Users\Public\Documents\NI Resources` — set
+`NI_RESOURCES_IMAGE_DIR` to the `image` folder under it.
+
+**Restart Maschine fully after installing.** A browser rescan often does not
+pick these up.
+
+### Which types get which
+
+| Kit type | image/ | dist_database/ |
+|---|---|---|
+| Plugin (effect or instrument) | yes | yes |
+| Sample Kit / Expansion | yes | no |
+| Kontakt Instrument | yes | no |
+| Maschine Group | yes | no |
+
+That mirrors the installed set: 7 plugin vendors in `dist_database` against 547
+folders in `image`.
+
+### Artwork still needs a matching Vendor
+
+For anything without a dist_database entry, the images resolve by the **Vendor
+property on the content**, not by folder name. NI-approved Kontakt libraries and
+plugins carry one already. A user sample kit does not, so its artwork will not
+appear until the content is tagged — in Maschine's browser, select it, then
+Edit → properties. See `docs/nks-image-spec.md`.
 
 ## Configuration
 
@@ -97,7 +131,8 @@ All optional — see `.env.example`.
 | Variable | Default | Purpose |
 |---|---|---|
 | `OPENAI_API_KEY` | — | Enables the "Generate with AI" tab. Server-side only. |
-| `NI_RESOURCES_IMAGE_DIR` | `/Users/Shared/NI Resources/image` | Install target |
+| `NI_RESOURCES_IMAGE_DIR` | `/Users/Shared/NI Resources/image` | Artwork install target |
+| `NI_RESOURCES_DIST_DB_DIR` | *(sibling of the above)* | Plugin metadata target |
 | `ICONMASCHINE_HOME` | `~/.iconmaschine` | Saved packs and the `.meta` template |
 
 ## Known limits

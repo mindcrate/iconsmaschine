@@ -18,9 +18,10 @@ export function CalibratePanel({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await postJson<{ result: CalibrationResult }>("/api/calibrate", {
-        harvestMeta: true,
-      });
+      const res = await postJson<{ result: CalibrationResult }>(
+        "/api/calibrate",
+        {},
+      );
       setResult(res.result);
       onDone();
     } catch (err) {
@@ -33,9 +34,8 @@ export function CalibratePanel({ onDone }: { onDone: () => void }) {
   return (
     <div>
       <p className="hint">
-        Reads the NI libraries already installed on this machine and compares them
-        against the sizes this app uses. It also copies a real <code>.meta</code>{" "}
-        file to use as the template for your packs. Nothing is modified.
+        Reads the NI libraries already installed on this machine and compares
+        them against the sizes this app uses. Nothing is modified.
       </p>
 
       <div className="actions">
@@ -52,9 +52,7 @@ export function CalibratePanel({ onDone }: { onDone: () => void }) {
             Scanned <code>{result.scannedRoot}</code> - found{" "}
             {result.libraries.length} librar
             {result.libraries.length === 1 ? "y" : "ies"}.
-            {result.metaTemplateHarvestedFrom
-              ? ` Harvested a .meta template from ${result.metaTemplateHarvestedFrom}.`
-              : " No .meta file found to harvest."}
+
           </div>
 
           <table className="calib">

@@ -1,21 +1,26 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { niImageDir, packSegments, safeJoin } from "./paths";
-import { metaCarriesForeignName, metaFileName, readMetaTemplate } from "./meta";
+import { niDistDatabaseDir, niImageDir, safeJoin } from "./paths";
+import { metaBuffer } from "./nimeta";
+import { buildDistDbFiles, folderName, type DistDbInput } from "./distdb";
 import type { RenderedFile } from "./render";
 
 export interface PlannedWrite {
+  /** Which NI Resources tree this file lands in. */
+  tree: "image" | "dist_database";
+  /** Path relative to that tree's root, for display. */
   file: string;
   bytes: number;
-  /** What is already at this path, if anything. */
   existing: { bytes: number; modified: string } | null;
 }
 
 export interface InstallPlan {
-  root: string;
-  targetDir: string;
-  /** Relative to `root`, for display. */
-  relativeDir: string;
+  imageRoot: string;
+  distDbRoot: string;
+  /** image/<product>/ */
+  imageDir: string;
+  /** dist_database/<vendor>/<product>/, or null when not applicable. */
+  distDbDir: string | null;
   writes: PlannedWrite[];
   rootExists: boolean;
   rootWritable: boolean;
@@ -23,11 +28,13 @@ export interface InstallPlan {
 }
 
 export interface InstallInput {
+  /** Properly cased product name. */
+  product: string;
+  /** Properly cased vendor. Only used when `distDb` is set. */
   vendor: string;
-  subfolder: string | null;
   files: RenderedFile[];
-  /** Written at the vendor level, named after the vendor folder. */
-  writeMeta: boolean;
+  /** Supply to also write a dist_database entry (plugins only). */
+  distDb: DistDbInput | null;
 }
 
 async function statOrNull(p: string) {
@@ -39,66 +46,95 @@ async function statOrNull(p: string) {
   }
 }
 
+/**
+ * The full file set for a pack, across both trees.
+ *
+ * `image/` is flat - one folder per product, named after the product, matching
+ * how the 547 installed libraries are laid out. `dist_database/` nests by
+ * vendor, matching dist_database/futureaudioworkshop/sublab/.
+ */
+function buildFileSet(input: InstallInput) {
+  const productFolder = folderName(input.product);
+
+  const imageFiles = [
+    ...input.files.map((f) => ({ file: f.file, buffer: f.buffer })),
+    {
+      file: `${productFolder}.meta`,
+      buffer: metaBuffer({ name: input.product, type: "image" }),
+    },
+  ];
+
+  const distDbFiles = input.distDb ? buildDistDbFiles(input.distDb) : [];
+
+  return { productFolder, imageFiles, distDbFiles };
+}
+
 export async function planInstall(input: InstallInput): Promise<InstallPlan> {
-  const root = niImageDir();
-  const segments = packSegments(input.vendor, input.subfolder);
-  const targetDir = safeJoin(root, ...segments);
+  const imageRoot = niImageDir();
+  const distDbRoot = niDistDatabaseDir();
   const warnings: string[] = [];
 
-  const rootExists = (await statOrNull(root)) !== null;
+  const { productFolder, imageFiles, distDbFiles } = buildFileSet(input);
+  const imageDir = safeJoin(imageRoot, productFolder);
+  const distDbDir = input.distDb
+    ? safeJoin(distDbRoot, folderName(input.distDb.vendor), productFolder)
+    : null;
+
+  const rootExists = (await statOrNull(imageRoot)) !== null;
   let rootWritable = false;
   if (rootExists) {
     try {
-      await fs.access(root, fs.constants.W_OK);
+      await fs.access(imageRoot, fs.constants.W_OK);
       rootWritable = true;
     } catch {
       warnings.push(
-        `${root} is not writable by this user. Fix permissions on the folder, then install again.`,
+        `${imageRoot} is not writable by this user. Fix permissions on the folder, then install again.`,
       );
     }
   } else {
     warnings.push(
-      `${root} does not exist. Create it, or point NI_RESOURCES_IMAGE_DIR at the right location.`,
+      `${imageRoot} does not exist. Create it, or point NI_RESOURCES_IMAGE_DIR at the right location.`,
+    );
+  }
+
+  if (input.distDb && !(await statOrNull(distDbRoot))) {
+    warnings.push(
+      `${distDbRoot} does not exist yet and will be created. Maschine reads plugin metadata from there.`,
+    );
+  }
+
+  if (!input.distDb) {
+    warnings.push(
+      "No dist_database entry for this kit type. Expansions and sample kits only appear in image/ - but artwork still only resolves once the content carries a matching Vendor property.",
     );
   }
 
   const writes: PlannedWrite[] = [];
-  for (const f of input.files) {
+  for (const f of imageFiles) {
     writes.push({
-      file: path.join(...segments, f.file),
+      tree: "image",
+      file: path.join(productFolder, f.file),
       bytes: f.buffer.length,
-      existing: await statOrNull(path.join(targetDir, f.file)),
+      existing: await statOrNull(path.join(imageDir, f.file)),
     });
   }
-
-  if (input.writeMeta) {
-    const template = await readMetaTemplate();
-    const metaName = metaFileName(input.vendor);
-    // The .meta always sits beside the vendor folder's own level.
-    const metaPath = safeJoin(root, input.vendor, metaName);
-    writes.push({
-      file: path.join(input.vendor, metaName),
-      bytes: template.length,
-      existing: await statOrNull(metaPath),
-    });
-    if (template.length === 0) {
-      warnings.push(
-        `No .meta template harvested yet, so ${metaName} will be written empty. Run Calibrate to copy one from a real NI library.`,
-      );
-    } else {
-      const foreign = await metaCarriesForeignName();
-      if (foreign) {
-        warnings.push(
-          `The harvested .meta template still contains the name "${foreign}" inside it. If Maschine reads the name from the file contents rather than the filename, ${metaName} will be wrong. This is unconfirmed - see docs/nks-image-spec.md.`,
-        );
-      }
+  if (input.distDb && distDbDir) {
+    const rel = path.join(folderName(input.distDb.vendor), productFolder);
+    for (const f of distDbFiles) {
+      writes.push({
+        tree: "dist_database",
+        file: path.join(rel, f.file),
+        bytes: f.buffer.length,
+        existing: await statOrNull(path.join(distDbDir, f.file)),
+      });
     }
   }
 
   return {
-    root,
-    targetDir,
-    relativeDir: segments.join(path.sep),
+    imageRoot,
+    distDbRoot,
+    imageDir,
+    distDbDir,
     writes,
     rootExists,
     rootWritable,
@@ -107,31 +143,37 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
 }
 
 export interface InstallResult {
-  targetDir: string;
+  imageDir: string;
+  distDbDir: string | null;
   written: string[];
 }
 
 export async function install(input: InstallInput): Promise<InstallResult> {
-  const root = niImageDir();
-  const segments = packSegments(input.vendor, input.subfolder);
-  const targetDir = safeJoin(root, ...segments);
+  const imageRoot = niImageDir();
+  const distDbRoot = niDistDatabaseDir();
+  const { productFolder, imageFiles, distDbFiles } = buildFileSet(input);
 
-  await fs.mkdir(targetDir, { recursive: true });
+  const imageDir = safeJoin(imageRoot, productFolder);
+  await fs.mkdir(imageDir, { recursive: true });
+
   const written: string[] = [];
-
-  for (const f of input.files) {
-    const target = safeJoin(targetDir, f.file);
-    await fs.writeFile(target, f.buffer);
-    written.push(path.join(...segments, f.file));
+  for (const f of imageFiles) {
+    await fs.writeFile(safeJoin(imageDir, f.file), f.buffer);
+    written.push(path.join("image", productFolder, f.file));
   }
 
-  if (input.writeMeta) {
-    const metaName = metaFileName(input.vendor);
-    const metaPath = safeJoin(root, input.vendor, metaName);
-    await fs.mkdir(path.dirname(metaPath), { recursive: true });
-    await fs.writeFile(metaPath, await readMetaTemplate());
-    written.push(path.join(input.vendor, metaName));
+  let distDbDir: string | null = null;
+  if (input.distDb) {
+    const vendorFolder = folderName(input.distDb.vendor);
+    distDbDir = safeJoin(distDbRoot, vendorFolder, productFolder);
+    await fs.mkdir(distDbDir, { recursive: true });
+    for (const f of distDbFiles) {
+      await fs.writeFile(safeJoin(distDbDir, f.file), f.buffer);
+      written.push(
+        path.join("dist_database", vendorFolder, productFolder, f.file),
+      );
+    }
   }
 
-  return { targetDir, written };
+  return { imageDir, distDbDir, written };
 }

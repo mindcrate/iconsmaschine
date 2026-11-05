@@ -121,9 +121,15 @@ export interface KitTypeInfo {
   id: KitType;
   label: string;
   blurb: string;
-  /** Plugin packs nest a subfolder under the vendor folder. */
-  usesSubfolder: boolean;
+  /**
+   * Plugins also need a dist_database/<vendor>/<product>/ entry. Expansions,
+   * Kontakt libraries and Groups appear in image/ only - matching how the
+   * installed set is laid out (7 plugin vendors in dist_database against 547
+   * folders in image).
+   */
+  usesDistDb: boolean;
   nameHint: string;
+  vendorHint: string;
 }
 
 export const KIT_TYPES: KitTypeInfo[] = [
@@ -132,32 +138,36 @@ export const KIT_TYPES: KitTypeInfo[] = [
     label: "Sample Kit",
     blurb:
       "A third-party Maschine sample kit or expansion, as it appears in the browser.",
-    usesSubfolder: false,
+    usesDistDb: false,
     nameHint: "Blap Kit",
+    vendorHint: "",
   },
   {
     id: "kontakt",
     label: "Kontakt Instrument",
     blurb:
       "A Kontakt Player library. Must match the library name exactly. Unofficial (non-NI-approved) libraries are not supported by Maschine.",
-    usesSubfolder: false,
+    usesDistDb: false,
     nameHint: "Exhale",
+    vendorHint: "",
   },
   {
     id: "plugin",
     label: "Plugin (Effect or Instrument)",
     blurb:
-      "A VST/AU vendor. Add a subfolder per plugin when one vendor ships several (e.g. Sugar Bytes > Looperator).",
-    usesSubfolder: true,
-    nameHint: "LennarDigital",
+      "A VST/AU plugin. Gets both the artwork and a dist_database entry, which is what makes the name, category and colour show up.",
+    usesDistDb: true,
+    nameHint: "SubLab",
+    vendorHint: "FutureAudioWorkshop",
   },
   {
     id: "group",
     label: "Maschine Group",
     blurb:
       "Artwork for your own saved Groups. Not supported by stock Maschine 2.4 - included so packs are ready if you keep Groups in a vendor-style folder.",
-    usesSubfolder: false,
+    usesDistDb: false,
     nameHint: "My Drum Groups",
+    vendorHint: "",
   },
 ];
 

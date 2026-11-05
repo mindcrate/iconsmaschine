@@ -9,12 +9,24 @@ export interface Pack {
   /** Display name in the app library. */
   name: string;
   kitType: KitType;
-  /** The NI Resources folder name - must match Maschine exactly. */
+  /**
+   * Properly cased vendor, e.g. "Sugar Bytes". Required for plugins, which get
+   * a dist_database/<vendor>/<product>/ entry. Folders on disk are lowercased.
+   */
   vendor: string;
-  subfolder: string | null;
+  /** Properly cased product, e.g. "Looperator". Names the image/ folder. */
+  product: string;
   nks2: boolean;
   background: string | null;
   padding: number;
+  /** dist_database: "Instruments" or "Effects". */
+  fileType: string;
+  /** dist_database: category strings, e.g. ["Synthesizers"]. */
+  categories: string[];
+  /** dist_database: hardware short name. Defaults to the product name. */
+  shortName: string | null;
+  /** dist_database: VB_bgcolor, six hex digits with no leading hash. */
+  bgColor: string;
   author: string;
   share: boolean;
   /** Your own labels for finding packs in this app. Not Maschine metadata. */
@@ -22,6 +34,11 @@ export interface Pack {
   hasLogo: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Only plugins get a dist_database entry; expansions live in image/ alone. */
+export function needsDistDb(pack: Pick<Pack, "kitType">): boolean {
+  return pack.kitType === "plugin";
 }
 
 export const ARTWORK_FILE = "source-artwork.png";

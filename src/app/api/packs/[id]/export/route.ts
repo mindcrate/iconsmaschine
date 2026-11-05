@@ -1,6 +1,6 @@
-import { buildPack, PackNotFound } from "@/lib/build";
+import { buildPack, distDbInputFor, PackNotFound } from "@/lib/build";
 import { jsonError } from "@/lib/form";
-import { readMetaTemplate } from "@/lib/meta";
+import { folderName } from "@/lib/distdb";
 import { zipPack } from "@/lib/zip";
 
 export const runtime = "nodejs";
@@ -12,16 +12,15 @@ export async function GET(_request: Request, { params }: Ctx) {
     const { id } = await params;
     const { pack, files } = await buildPack(id);
     const zip = zipPack({
-      vendor: pack.vendor,
-      subfolder: pack.subfolder,
+      product: pack.product,
       files,
-      meta: await readMetaTemplate(),
+      distDb: distDbInputFor(pack),
     });
 
     return new Response(new Uint8Array(zip), {
       headers: {
         "content-type": "application/zip",
-        "content-disposition": `attachment; filename="${pack.vendor.replace(/"/g, "")}.zip"`,
+        "content-disposition": `attachment; filename="${folderName(pack.product).replace(/"/g, "")}.zip"`,
       },
     });
   } catch (err) {

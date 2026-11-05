@@ -1,8 +1,9 @@
 import type { Pack } from "./store";
 import type { CalibrationResult } from "./calibrate";
 import type { InstallPlan, InstallResult } from "./install";
+import type { Vocabulary } from "./vocab";
 
-export type { Pack, CalibrationResult, InstallPlan, InstallResult };
+export type { Pack, CalibrationResult, InstallPlan, InstallResult, Vocabulary };
 
 export interface PreviewFile {
   file: string;
@@ -20,6 +21,7 @@ export interface AppStatus {
   rootWritable: boolean;
   home: string;
   hasOpenAiKey: boolean;
-  hasMetaTemplate: boolean;
+  distDbDir: string;
+  distDbExists: boolean;
   platform: string;
 }

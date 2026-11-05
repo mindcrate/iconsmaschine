@@ -1,4 +1,4 @@
-import { buildPack, PackNotFound } from "@/lib/build";
+import { buildPack, distDbInputFor, PackNotFound } from "@/lib/build";
 import { jsonError } from "@/lib/form";
 import { install, planInstall } from "@/lib/install";
 
@@ -19,10 +19,10 @@ export async function POST(request: Request, { params }: Ctx) {
     const { pack, files } = await buildPack(id);
 
     const input = {
+      product: pack.product,
       vendor: pack.vendor,
-      subfolder: pack.subfolder,
       files,
-      writeMeta: true,
+      distDb: distDbInputFor(pack),
     };
 
     const plan = await planInstall(input);

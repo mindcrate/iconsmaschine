@@ -8,7 +8,7 @@ import { LibraryPanel } from "@/components/LibraryPanel";
 import { PreviewGrid } from "@/components/PreviewGrid";
 import { getJson, sendForm } from "@/lib/client";
 import { KIT_TYPES, validateFolderName, type KitType } from "@/lib/spec";
-import type { AppStatus, Pack, PreviewFile } from "@/lib/types";
+import type { AppStatus, Pack, PreviewFile, Vocabulary } from "@/lib/types";
 
 export default function Page() {
   const [status, setStatus] = useState<AppStatus | null>(null);
@@ -16,7 +16,12 @@ export default function Page() {
 
   const [kitType, setKitType] = useState<KitType>("sample_kit");
   const [vendor, setVendor] = useState("");
-  const [subfolder, setSubfolder] = useState("");
+  const [product, setProduct] = useState("");
+  const [fileType, setFileType] = useState("Instruments");
+  const [categories, setCategories] = useState<string[]>([]);
+  const [shortName, setShortName] = useState("");
+  const [bgColor, setBgColor] = useState("#f4b021");
+  const [vocab, setVocab] = useState<Vocabulary | null>(null);
   const [name, setName] = useState("");
   const [author, setAuthor] = useState("");
   const [share, setShare] = useState(false);
@@ -36,9 +41,21 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
 
   const kitInfo = KIT_TYPES.find((k) => k.id === kitType)!;
-  const vendorError = vendor ? validateFolderName(vendor) : null;
-  const subError = subfolder ? validateFolderName(subfolder) : null;
-  const canBuild = Boolean(artwork) && Boolean(vendor) && !vendorError && !subError;
+  const productError = product ? validateFolderName(product) : null;
+  const vendorError =
+    kitInfo.usesDistDb && vendor ? validateFolderName(vendor) : null;
+  const needsVendor = kitInfo.usesDistDb && !vendor.trim();
+  const needsCategory = kitInfo.usesDistDb && categories.length === 0;
+  const canBuild =
+    Boolean(artwork) &&
+    Boolean(product) &&
+    !productError &&
+    !vendorError &&
+    !needsVendor &&
+    !needsCategory;
+
+  const categoryOptions = vocab?.byFileType[fileType] ?? [];
+  const fileTypeOptions = vocab ? Object.keys(vocab.byFileType) : ["Instruments", "Effects"];
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -57,10 +74,19 @@ export default function Page() {
     }
   }, []);
 
+  const refreshVocab = useCallback(async () => {
+    try {
+      setVocab(await getJson<Vocabulary>("/api/vocab"));
+    } catch {
+      /* falls back to the built-in list */
+    }
+  }, []);
+
   useEffect(() => {
     void refreshStatus();
     void refreshPacks();
-  }, [refreshStatus, refreshPacks]);
+    void refreshVocab();
+  }, [refreshStatus, refreshPacks, refreshVocab]);
 
   function resetOutputs() {
     setPreview(null);
@@ -74,8 +100,12 @@ export default function Page() {
     try {
       const form = new FormData();
       form.set("kitType", kitType);
-      form.set("vendor", vendor);
-      form.set("subfolder", kitInfo.usesSubfolder ? subfolder : "");
+      form.set("vendor", kitInfo.usesDistDb ? vendor : "");
+      form.set("product", product);
+      form.set("fileType", fileType);
+      form.set("categories", categories.join(","));
+      form.set("shortName", shortName);
+      form.set("bgColor", bgColor);
       form.set("name", name);
       form.set("author", author);
       form.set("share", String(share));
@@ -110,7 +140,11 @@ export default function Page() {
   function openPack(pack: Pack) {
     setKitType(pack.kitType);
     setVendor(pack.vendor);
-    setSubfolder(pack.subfolder ?? "");
+    setProduct(pack.product);
+    setFileType(pack.fileType);
+    setCategories(pack.categories);
+    setShortName(pack.shortName ?? "");
+    setBgColor(`#${pack.bgColor}`);
     setName(pack.name);
     setAuthor(pack.author);
     setShare(pack.share);
@@ -170,8 +204,10 @@ export default function Page() {
                 <span className={status.hasOpenAiKey ? "chip ok" : "chip"}>
                   {status.hasOpenAiKey ? "OpenAI key loaded" : "no OpenAI key"}
                 </span>
-                <span className={status.hasMetaTemplate ? "chip ok" : "chip warn"}>
-                  {status.hasMetaTemplate ? ".meta template ready" : "no .meta template"}
+                <span className={status.distDbExists ? "chip ok" : "chip warn"}>
+                  {status.distDbExists
+                    ? "dist_database found"
+                    : "no dist_database yet"}
                 </span>
               </>
             )}
@@ -207,93 +243,193 @@ export default function Page() {
 
         <section className="step">
           <h2>
-            <span className="letter">B</span>Name the folder
+            <span className="letter">B</span>Name it
           </h2>
           <p className="hint">
-            The name must be <strong>exactly</strong> the name Maschine shows for the
-            kit, library or plugin vendor. No special characters ($ % &amp; @ # ! _).
+            Names must match <strong>exactly</strong> what Maschine shows. Folders
+            on disk are lowercased, the way NI stores them; the name you type here
+            is what goes inside the .meta and JSON files.
           </p>
 
           <div className="row">
-            <div className="field">
-              <label>
-                {kitInfo.usesSubfolder ? "Plugin vendor folder" : `${kitInfo.label} folder name`}
-              </label>
-              <input
-                type="text"
-                placeholder={kitInfo.nameHint}
-                value={vendor}
-                onChange={(e) => {
-                  setVendor(e.target.value);
-                  resetOutputs();
-                }}
-              />
-              {vendorError && (
-                <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 5 }}>
-                  {vendorError}
-                </div>
-              )}
-            </div>
-
-            {kitInfo.usesSubfolder && (
+            {kitInfo.usesDistDb && (
               <div className="field">
                 <label>
-                  Plugin subfolder
-                  <span className="sub">optional</span>
+                  Vendor<span className="sub">required for plugins</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="Sylenth1"
-                  value={subfolder}
+                  placeholder={kitInfo.vendorHint}
+                  list="known-vendors"
+                  value={vendor}
                   onChange={(e) => {
-                    setSubfolder(e.target.value);
+                    setVendor(e.target.value);
                     resetOutputs();
                   }}
                 />
-                {subError && (
+                <datalist id="known-vendors">
+                  {(vocab?.vendors ?? []).map((v) => (
+                    <option key={v} value={v} />
+                  ))}
+                </datalist>
+                {vendorError && (
                   <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 5 }}>
-                    {subError}
+                    {vendorError}
                   </div>
                 )}
               </div>
             )}
-          </div>
 
-          {kitInfo.usesSubfolder && (
-            <p className="hint" style={{ marginBottom: 12 }}>
-              Only add a subfolder when one vendor ships several plugins and you want
-              different images for each (e.g. Sugar Bytes &gt; Looperator, WOW2,
-              Effectrix). Use the plugin name exactly as Maschine shows it.
-            </p>
-          )}
+            <div className="field">
+              <label>
+                {kitInfo.usesDistDb ? "Plugin name" : `${kitInfo.label} name`}
+              </label>
+              <input
+                type="text"
+                placeholder={kitInfo.nameHint}
+                value={product}
+                onChange={(e) => {
+                  setProduct(e.target.value);
+                  resetOutputs();
+                }}
+              />
+              {productError && (
+                <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 5 }}>
+                  {productError}
+                </div>
+              )}
+            </div>
+          </div>
 
           {kitType === "kontakt" && (
             <div className="note">
-              Maschine only supports images for NI-approved Kontakt Player libraries.
-              Unofficial libraries and user Groups/Sounds will not pick these up.
+              Maschine only supports images for NI-approved Kontakt Player
+              libraries. Unofficial libraries and user Groups/Sounds will not pick
+              these up.
             </div>
           )}
 
           {kitType === "group" && (
             <div className="note">
-              Stock Maschine does not read custom images for user Groups. This builds
-              the pack anyway so it is ready if you keep Groups under a vendor-style
-              folder.
+              Stock Maschine does not read custom images for user Groups. This
+              builds the pack anyway so it is ready if that changes.
             </div>
           )}
 
-          {vendor && !vendorError && status && (
+          {!kitInfo.usesDistDb && (
+            <div className="note">
+              Artwork alone is not enough for this type. The content itself must
+              carry a <strong>Vendor</strong> property matching this name - set it
+              in Maschine&apos;s browser under Edit &rarr; properties - or nothing
+              resolves to these images.
+            </div>
+          )}
+
+          {product && !productError && status && (
             <div className="path-preview">
-              {status.niImageDir}/<b>{vendor}</b>
-              {kitInfo.usesSubfolder && subfolder && !subError ? (
-                <>
-                  /<b>{subfolder}</b>
-                </>
-              ) : null}
+              {status.niImageDir}/<b>{product.trim().toLowerCase()}</b>/
+            </div>
+          )}
+          {kitInfo.usesDistDb && product && vendor && !productError && !vendorError && status && (
+            <div className="path-preview" style={{ marginTop: 8 }}>
+              {status.niImageDir.replace(/image$/, "dist_database")}/
+              <b>
+                {vendor.trim().toLowerCase()}/{product.trim().toLowerCase()}
+              </b>
               /
             </div>
           )}
         </section>
+
+        {kitInfo.usesDistDb && (
+          <section className="step">
+            <h2>
+              <span className="letter">B2</span>Browser entry
+            </h2>
+            <p className="hint">
+              This is the <code>dist_database</code> half - it drives the name,
+              category and colour in the browser.{" "}
+              {vocab?.fromDisk
+                ? `Categories below are read from the ${vocab.scanned} entries installed on this machine.`
+                : "Nothing installed to read categories from yet, so this is a built-in list."}
+            </p>
+
+            <div className="row">
+              <div className="field">
+                <label>Type</label>
+                <select
+                  value={fileType}
+                  onChange={(e) => {
+                    setFileType(e.target.value);
+                    setCategories([]);
+                    resetOutputs();
+                  }}
+                >
+                  {fileTypeOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>
+                  Short name<span className="sub">for hardware displays</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder={product || "SubLab"}
+                  value={shortName}
+                  onChange={(e) => {
+                    setShortName(e.target.value);
+                    resetOutputs();
+                  }}
+                />
+              </div>
+              <div className="field">
+                <label>Browser colour</label>
+                <input
+                  type="color"
+                  value={bgColor}
+                  onChange={(e) => {
+                    setBgColor(e.target.value);
+                    resetOutputs();
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="field">
+              <label>
+                Categories
+                <span className="sub">
+                  {categories.length === 0
+                    ? "pick at least one"
+                    : categories.join(", ")}
+                </span>
+              </label>
+              <div className="cat-grid">
+                {categoryOptions.map((c) => (
+                  <label key={c}>
+                    <input
+                      type="checkbox"
+                      checked={categories.includes(c)}
+                      onChange={(e) => {
+                        setCategories((prev) =>
+                          e.target.checked
+                            ? [...prev, c]
+                            : prev.filter((x) => x !== c),
+                        );
+                        resetOutputs();
+                      }}
+                    />
+                    {c}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="step">
           <h2>
@@ -424,7 +560,7 @@ export default function Page() {
               </label>
               <input
                 type="text"
-                placeholder={vendor || "Blap Kit"}
+                placeholder={product || "Blap Kit"}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -471,6 +607,16 @@ export default function Page() {
             {!artwork && (
               <span style={{ color: "var(--muted)", fontSize: 12 }}>
                 Add artwork in step C first.
+              </span>
+            )}
+            {artwork && needsVendor && (
+              <span style={{ color: "var(--muted)", fontSize: 12 }}>
+                A plugin needs a vendor name.
+              </span>
+            )}
+            {artwork && !needsVendor && needsCategory && (
+              <span style={{ color: "var(--muted)", fontSize: 12 }}>
+                Pick at least one category.
               </span>
             )}
           </div>

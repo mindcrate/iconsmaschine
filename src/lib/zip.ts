@@ -1,13 +1,13 @@
 import { crc32 } from "node:zlib";
 import path from "node:path";
-import { metaFileName } from "./meta";
+import { metaBuffer } from "./nimeta";
+import { buildDistDbFiles, folderName, type DistDbInput } from "./distdb";
 import type { RenderedFile } from "./render";
 
 export interface ZipInput {
-  vendor: string;
-  subfolder: string | null;
+  product: string;
   files: RenderedFile[];
-  meta: Buffer | null;
+  distDb: DistDbInput | null;
 }
 
 interface Entry {
@@ -41,7 +41,7 @@ function buildZip(entries: Entry[]): Buffer {
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(LOCAL_SIG, 0);
-    local.writeUInt16LE(20, 4); // version needed
+    local.writeUInt16LE(20, 4);
     local.writeUInt16LE(0x0800, 6); // UTF-8 filename flag
     local.writeUInt16LE(METHOD_STORE, 8);
     local.writeUInt16LE(dosTime, 10);
@@ -56,8 +56,8 @@ function buildZip(entries: Entry[]): Buffer {
 
     const central = Buffer.alloc(46);
     central.writeUInt32LE(CENTRAL_SIG, 0);
-    central.writeUInt16LE(20, 4); // version made by
-    central.writeUInt16LE(20, 6); // version needed
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
     central.writeUInt16LE(0x0800, 8);
     central.writeUInt16LE(METHOD_STORE, 10);
     central.writeUInt16LE(dosTime, 12);
@@ -66,11 +66,11 @@ function buildZip(entries: Entry[]): Buffer {
     central.writeUInt32LE(size, 20);
     central.writeUInt32LE(size, 24);
     central.writeUInt16LE(name.length, 28);
-    central.writeUInt16LE(0, 30); // extra
-    central.writeUInt16LE(0, 32); // comment
-    central.writeUInt16LE(0, 34); // disk number
-    central.writeUInt16LE(0, 36); // internal attrs
-    central.writeUInt32LE(0, 38); // external attrs
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
     central.writeUInt32LE(offset, 42);
 
     centrals.push(central, name);
@@ -92,24 +92,33 @@ function buildZip(entries: Entry[]): Buffer {
 }
 
 /**
- * Zips the pack with the same folder shape it installs to, so the archive can
- * be unzipped straight into NI Resources/image on another machine.
+ * Zips both trees with the folder shape they install to, so the archive can be
+ * unzipped straight over NI Resources on another machine.
  */
 export function zipPack(input: ZipInput): Buffer {
-  const inner = input.subfolder?.trim()
-    ? path.join(input.vendor, input.subfolder.trim())
-    : input.vendor;
+  const productFolder = folderName(input.product);
+  const entries: Entry[] = [];
 
-  const entries: Entry[] = input.files.map((f) => ({
-    name: path.join(inner, f.file),
-    data: f.buffer,
-  }));
-
-  if (input.meta) {
+  for (const f of input.files) {
     entries.push({
-      name: path.join(input.vendor, metaFileName(input.vendor)),
-      data: input.meta,
+      name: path.join("image", productFolder, f.file),
+      data: f.buffer,
     });
+  }
+  entries.push({
+    name: path.join("image", productFolder, `${productFolder}.meta`),
+    data: metaBuffer({ name: input.product, type: "image" }),
+  });
+
+  if (input.distDb) {
+    const rel = path.join(
+      "dist_database",
+      folderName(input.distDb.vendor),
+      productFolder,
+    );
+    for (const f of buildDistDbFiles(input.distDb)) {
+      entries.push({ name: path.join(rel, f.file), data: f.buffer });
+    }
   }
 
   return buildZip(entries);

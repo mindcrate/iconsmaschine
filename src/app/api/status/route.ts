@@ -1,11 +1,15 @@
 import fs from "node:fs/promises";
-import { hasMetaTemplate } from "@/lib/meta";
-import { iconmaschineHome, niImageDir } from "@/lib/paths";
+import { iconmaschineHome, niDistDatabaseDir, niImageDir } from "@/lib/paths";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   const root = niImageDir();
+  const distDbDir = niDistDatabaseDir();
+  const distDbExists = await fs
+    .access(distDbDir)
+    .then(() => true)
+    .catch(() => false);
   let rootExists = false;
   let rootWritable = false;
   try {
@@ -23,7 +27,8 @@ export async function GET() {
     rootWritable,
     home: iconmaschineHome(),
     hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
-    hasMetaTemplate: await hasMetaTemplate(),
+    distDbDir,
+    distDbExists,
     platform: process.platform,
   });
 }
