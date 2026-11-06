@@ -129,6 +129,9 @@ try {
     groups.set(heading, g);
   }
 
+  // "Other" and a blank heading mean no vendor heading at all.
+  const NOT_A_VENDOR = new Set(["native instruments", "other", "(blank)"]);
+
   const rows = [...groups].sort((a, b) => (b[1].flat + b[1].nested) - (a[1].flat + a[1].nested) || b[1].chains - a[1].chains);
   const pad = (s: unknown, w: number) => String(s).slice(0, w).padEnd(w);
   console.log(`${pad("browser heading", 26)} ${pad("chains", 7)} ${pad("flat", 6)} ${pad("nested", 7)} ${pad("none", 6)} ${pad("yours", 6)} installed`);
@@ -137,27 +140,56 @@ try {
     console.log(`${pad(h, 26)} ${pad(g.chains, 7)} ${pad(g.flat, 6)} ${pad(g.nested, 7)} ${pad(g.none, 6)} ${pad(g.yours, 6)} ${g.installed}`);
   }
 
-  // "Other" and a blank heading mean no vendor heading at all, which is the
-  // state we are trying to get OUT of - they are not examples to copy.
-  const NOT_A_VENDOR = new Set(["native instruments", "other", "(blank)"]);
-  const working = rows.filter(
-    ([h, g]) => !NOT_A_VENDOR.has(h.toLowerCase()) && g.yours > 0 && (g.flat + g.nested) > 0,
-  );
+  // The coarse per-heading view above cannot answer the real question: it
+  // counts a heading as working if ANY of its chains has artwork and ANY of
+  // its content is the user's, which for a plugin vendor is two different
+  // chains. Tie them together per chain instead.
   console.log("\n" + "=".repeat(80));
-  if (working.length === 0) {
-    console.log("NO third-party heading has artwork on content of your own.");
-    console.log("Every working example here is Native Instruments' own installed content,");
-    console.log("so there is nothing on this machine to copy - the sample path needs a");
-    console.log("different answer, not a different folder name.");
-  } else {
-    console.log("Third-party headings that DO have artwork on your own content:");
-    for (const [h, g] of working) {
-      console.log(`\n  ${h}  (${g.chains} chains, ${g.flat} flat, ${g.nested} nested)`);
-      for (const s of g.sample) console.log(`    ${s}`);
-    }
-    console.log("\nCompare one of these against 808 COLLECTION:");
-    console.log(`  bash scripts/trace-kit.sh "${working[0][1].sample[0]?.split(" -> ")[0] ?? ""}"`);
+  console.log("YOUR OWN content - audio outside the installed trees - by artwork");
+  console.log("=".repeat(80));
+
+  interface Row { name: string; heading: string; vendor: string; at: string }
+  const mine: Row[] = [];
+  const mineNone: Row[] = [];
+  for (const c of chains) {
+    const id = Number(c.id);
+    const name = String(c.entry1 ?? "").trim();
+    if (!name || name.startsWith("/")) continue;
+    if (where.get(id) !== "yours") continue;
+    const heading = String(c.bcvendor ?? "").trim() || "(blank)";
+    const vend = soundVendor.get(id) || (NOT_A_VENDOR.has(heading.toLowerCase()) ? "" : heading);
+    const flatN = artCount(path.join(imageDir, fold(name)));
+    const nestN = vend ? artCount(path.join(imageDir, fold(vend), fold(name))) : -1;
+    const row = { name, heading, vendor: vend || "(none)", at: "" };
+    if (nestN > 0) { row.at = `image/${fold(vend)}/${fold(name)}/ (${nestN} files)`; mine.push(row); }
+    else if (flatN > 0) { row.at = `image/${fold(name)}/ (${flatN} files)`; mine.push(row); }
+    else mineNone.push(row);
   }
+
+  const seen = new Set<string>();
+  const uniq = mine.filter((r) => {
+    const k = `${r.name}|${r.at}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  console.log(`${mine.length} of ${mine.length + mineNone.length} such chains have artwork on disk.\n`);
+  if (uniq.length > 0) {
+    console.log(`${pad("library", 30)} ${pad("heading", 20)} ${pad("vendor", 16)} artwork at`);
+    console.log("-".repeat(96));
+    for (const r of uniq.slice(0, 40)) {
+      console.log(`${pad(r.name, 30)} ${pad(r.heading, 20)} ${pad(r.vendor, 16)} ${r.at}`);
+    }
+    if (uniq.length > 40) console.log(`  ... and ${uniq.length - 40} more`);
+    console.log("\nCheck one of these in Maschine's browser. If any DISPLAYS its artwork,");
+    console.log("that is the example to copy and the layout question is settled. If none");
+    console.log("does, folders on disk prove nothing and the answer is elsewhere.");
+  } else {
+    console.log("None. No library of your own has artwork anywhere we would look,");
+    console.log("so there is no working example on this machine to copy.");
+  }
+
   d.close();
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
