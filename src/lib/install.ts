@@ -70,6 +70,13 @@ export interface InstallInput {
   } | null;
 }
 
+/**
+ * A library folder unzipped as "DECAP DRUMS THAT KNOCK V4.WAV" kept that name
+ * as its bank, and Maschine 3 showed no artwork for it. Renaming the folder
+ * without ".WAV" fixed it, sub-banks and all.
+ */
+const AUDIO_SUFFIX = /\.(wav|wave|aif|aiff|flac|mp3|ogg)$/i;
+
 async function statOrNull(p: string) {
   try {
     const s = await fs.stat(p);
@@ -163,6 +170,13 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
   if (input.distDb && !(await statOrNull(distDbRoot))) {
     warnings.push(
       `${distDbRoot} does not exist yet and will be created. Maschine reads plugin metadata from there.`,
+    );
+  }
+
+  const audioSuffix = input.product.trim().match(AUDIO_SUFFIX);
+  if (audioSuffix) {
+    warnings.push(
+      `"${input.product.trim()}" ends in ${audioSuffix[0]}. Maschine 3 does not find artwork for a library whose name ends like a file type, and Finder hides that ending, so the folder may look fine. Rename the library's folder in Finder to remove ${audioSuffix[0]}, let Maschine scan it again, then pick the kit again here.`,
     );
   }
 

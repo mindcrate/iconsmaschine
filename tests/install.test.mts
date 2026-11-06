@@ -594,3 +594,17 @@ test("samples are ignored for a pack that is not a nested user pack", async (t) 
   assert.equal((await install(input)).samples, null);
   assert.ok((await fs.readFile(lib.targets[0].path)).equals(lib.wav));
 });
+
+test("a library name ending in .WAV gets a warning to rename its folder", async (t) => {
+  await tempRoot(t);
+  const { planInstall } = await import("../src/lib/install.ts");
+  const base = { vendor: "DECAP", imageVendor: "DECAP", files, distDb: null };
+
+  const bad = await planInstall({ ...base, product: "DECAP DRUMS THAT KNOCK V4.WAV" });
+  assert.ok(bad.warnings.some((w) => w.includes("ends in .WAV") && w.includes("Rename")));
+
+  const good = await planInstall({ ...base, product: "DRUMS THAT KNOCK V4" });
+  assert.equal(good.warnings.some((w) => w.includes("ends in")), false);
+  const dotted = await planInstall({ ...base, product: "Oki Computer 2.1" });
+  assert.equal(dotted.warnings.some((w) => w.includes("ends in")), false);
+});
