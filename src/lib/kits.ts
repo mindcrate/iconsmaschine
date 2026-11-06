@@ -19,16 +19,23 @@ import {
  *   has a vendor  ->  image/<vendor>/
  *   no vendor     ->  image/<bank chain entry1>/
  *
- * Measured on a real system, across products where the two names differ:
- * vendor matched an image folder 1,031 times, the bank chain name 105. The
- * clearest single case is "ALL HIHATS PERCUSSION" with vendor "MOOSE LIFE" -
- * `image/moose life/` exists, `image/all hihats percussion/` does not.
+ * Vendor-first is NOT well established, and the count that suggested it does
+ * not support it. Across products where the two names differ, vendor matched
+ * an image folder 1,031 times against the bank chain's 105 - but that counts
+ * which folders happen to exist on one machine, not which ones Maschine
+ * reads. The overwhelming majority of those vendor matches are one user's own
+ * `image/moose life/`, shared by 700-odd of their sample banks, and none of
+ * them is confirmed to display anything.
  *
- * Expansions and user Groups usually carry no vendor, which is why the bank
- * chain works for them (Bumpin Flava). Sample packs from a label usually do.
+ * The products confirmed to display artwork point the other way. Every NI
+ * expansion - Bumpin Flava, Arcane Attic, Astral Flutter, Conant Gardens -
+ * carries vendor "Native Instruments", there is no `image/native
+ * instruments/`, and each matches on its product name instead.
  *
- * `altFolder` carries the other candidate, because 105 products really do
- * match on the name instead - so the UI can offer both rather than guess.
+ * So treat both as candidates and offer both: `folder` is tried first,
+ * `altFolder` carries the other. Do not harden this into a single rule
+ * without a case where artwork is seen to appear and disappear with the
+ * folder name.
  */
 
 export interface Kit {
