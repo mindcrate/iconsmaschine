@@ -182,9 +182,24 @@ try {
       console.log(`${pad(r.name, 30)} ${pad(r.heading, 20)} ${pad(r.vendor, 16)} ${r.at}`);
     }
     if (uniq.length > 40) console.log(`  ... and ${uniq.length - 40} more`);
-    console.log("\nCheck one of these in Maschine's browser. If any DISPLAYS its artwork,");
-    console.log("that is the example to copy and the layout question is settled. If none");
-    console.log("does, folders on disk prove nothing and the answer is elsewhere.");
+    // Split by heading, because that is what the evidence points at: on one
+    // machine every library under "Other" failed to display despite having a
+    // full set of files in the right folder, while every one under a blank or
+    // real heading displayed. Folder layout did not predict it; the heading
+    // did.
+    const other = uniq.filter((r) => r.heading.toLowerCase() === "other");
+    const named = uniq.filter((r) => r.heading.toLowerCase() !== "other");
+    console.log(
+      `\n${named.length} of these sit under a blank or real vendor heading, ${other.length} under "Other".`,
+    );
+    if (other.length > 0) {
+      console.log('\nUnder "Other" - these are the ones to check first:');
+      for (const r of other) console.log(`  ${r.name}  (${r.at})`);
+      console.log(
+        "\nIf none of these displays while the others do, the heading decides it,",
+      );
+      console.log("not the folder, and no amount of moving files will help.");
+    }
   } else {
     console.log("None. No library of your own has artwork anywhere we would look,");
     console.log("so there is no working example on this machine to copy.");
