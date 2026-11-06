@@ -17,7 +17,7 @@ export interface Row {
 }
 
 export interface MaschineDb {
-  prepare: (sql: string) => { all: (...args: never[]) => Row[] };
+  prepare: (sql: string) => { all: (...params: string[]) => Row[] };
   close: () => void;
 }
 
@@ -94,9 +94,9 @@ export async function openMaschineDb(dbPath: string): Promise<OpenedDb> {
 }
 
 /** Runs a query, returning [] rather than throwing on a schema mismatch. */
-export function tryAll(db: MaschineDb, sql: string): Row[] {
+export function tryAll(db: MaschineDb, sql: string, ...params: string[]): Row[] {
   try {
-    return db.prepare(sql).all();
+    return db.prepare(sql).all(...params);
   } catch {
     return [];
   }

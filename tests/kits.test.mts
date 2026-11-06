@@ -358,7 +358,8 @@ test("userLibrarySamples lists a library's own WAV files with their bank chains"
       (1,'Other','808 COLLECTION',NULL,NULL),
       (2,'Other','Projects','808 Collection',''),
       (3,'Other','Other Library',NULL,NULL),
-      (4,'Native Instruments','808 collection','Kits',NULL);
+      (4,'Native Instruments','808 collection','Kits',NULL),
+      (5,'Other','Mike''s Kit',NULL,NULL);
     INSERT INTO k_content_path VALUES (1,'/Volumes/Music/808'),(2,'/Users/Shared/Expansions/808');
     INSERT INTO k_sound_info VALUES
       (1,1,'/Volumes/Music/808/kick.wav','wav',1),
@@ -367,7 +368,9 @@ test("userLibrarySamples lists a library's own WAV files with their bank chains"
       (4,1,'/Volumes/Music/808/loop.aif','aif',1),
       (5,2,'/Volumes/Music/808/nested.wav','wav',1),
       (6,3,'/Volumes/Music/other/x.wav','wav',1),
-      (7,4,'/Users/Shared/Expansions/808/installed.wav','wav',2);
+      (7,4,'/Users/Shared/Expansions/808/installed.wav','wav',2),
+      (8,1,'/Users/Shared/Loose/no-content-path.wav','wav',NULL),
+      (9,5,'/Volumes/Music/mike/hat .wav','wav',1);
   `);
   db.close();
   process.env.MASCHINE_DB_PATH = dbFile;
@@ -386,6 +389,11 @@ test("userLibrarySamples lists a library's own WAV files with their bank chains"
   const nested = await userLibrarySamples("Projects");
   assert.deepEqual(nested.samples, [
     { path: "/Volumes/Music/808/nested.wav", bankchain: ["Projects", "808 Collection"] },
+  ]);
+
+  const quoted = await userLibrarySamples("Mike's Kit");
+  assert.deepEqual(quoted.samples, [
+    { path: "/Volumes/Music/mike/hat .wav", bankchain: ["Mike's Kit"] },
   ]);
 });
 

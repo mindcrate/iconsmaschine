@@ -365,7 +365,6 @@ export async function userLibrarySamples(
     const opened = await openMaschineDb(dbPath);
     cleanup = opened.cleanup;
     try {
-      const wanted = product.trim().toLowerCase().replaceAll("'", "''");
       const rows = tryAll(
         opened.db,
         `SELECT s.file_name AS file, p.path AS root,
@@ -373,16 +372,19 @@ export async function userLibrarySamples(
          FROM k_sound_info s
          JOIN k_bank_chain b ON b.id = s.bank_chain_id
          LEFT JOIN k_content_path p ON p.id = s.content_path_id
-         WHERE lower(trim(b.entry1)) = '${wanted}' AND lower(s.file_ext) = 'wav'
+         WHERE lower(trim(b.entry1)) = ? AND lower(s.file_ext) = 'wav'
          ORDER BY s.file_name`,
+        product.trim().toLowerCase(),
       );
 
       const seen = new Set<string>();
       const samples: SampleTarget[] = [];
       for (const r of rows) {
-        const file = str(r.file);
+        // Not str(): it trims, and a file name may end in a space.
+        const file = typeof r.file === "string" ? r.file : "";
         if (!file || !path.isAbsolute(file) || seen.has(file)) continue;
-        if (INSTALLED_ROOTS.some((root) => str(r.root).startsWith(root))) continue;
+        const root = str(r.root);
+        if (INSTALLED_ROOTS.some((r) => file.startsWith(r) || root.startsWith(r))) continue;
         seen.add(file);
         samples.push({
           path: file,
