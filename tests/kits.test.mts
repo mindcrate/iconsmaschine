@@ -345,3 +345,57 @@ test("the vendor on the sounds beats the bank chain's own field", async (t) => {
   assert.equal(kit.folder, "tim moose/808 collection");
   assert.equal(kit.matchedBy, "nested");
 });
+
+test("userLibrarySamples lists a library's own WAV files with their bank chains", async (t) => {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), "im-samples-"));
+  const dbFile = path.join(base, "komplete.db3");
+  const db = new DatabaseSync(dbFile);
+  db.exec(`
+    CREATE TABLE k_bank_chain (id INTEGER, bcvendor TEXT, entry1 TEXT, entry2 TEXT, entry3 TEXT);
+    CREATE TABLE k_sound_info (id INTEGER, bank_chain_id INTEGER, file_name TEXT, file_ext TEXT, content_path_id INTEGER);
+    CREATE TABLE k_content_path (id INTEGER, path TEXT);
+    INSERT INTO k_bank_chain VALUES
+      (1,'Other','808 COLLECTION',NULL,NULL),
+      (2,'Other','Projects','808 Collection',''),
+      (3,'Other','Other Library',NULL,NULL),
+      (4,'Native Instruments','808 collection','Kits',NULL);
+    INSERT INTO k_content_path VALUES (1,'/Volumes/Music/808'),(2,'/Users/Shared/Expansions/808');
+    INSERT INTO k_sound_info VALUES
+      (1,1,'/Volumes/Music/808/kick.wav','wav',1),
+      (2,1,'/Volumes/Music/808/snare.WAV','WAV',1),
+      (3,1,'/Volumes/Music/808/kick.wav','wav',1),
+      (4,1,'/Volumes/Music/808/loop.aif','aif',1),
+      (5,2,'/Volumes/Music/808/nested.wav','wav',1),
+      (6,3,'/Volumes/Music/other/x.wav','wav',1),
+      (7,4,'/Users/Shared/Expansions/808/installed.wav','wav',2);
+  `);
+  db.close();
+  process.env.MASCHINE_DB_PATH = dbFile;
+  t.after(async () => {
+    delete process.env.MASCHINE_DB_PATH;
+    await fs.rm(base, { recursive: true, force: true });
+  });
+
+  const { userLibrarySamples } = await import("../src/lib/kits.ts");
+  const { samples } = await userLibrarySamples(" 808 collection ");
+  assert.deepEqual(samples, [
+    { path: "/Volumes/Music/808/kick.wav", bankchain: ["808 COLLECTION"] },
+    { path: "/Volumes/Music/808/snare.WAV", bankchain: ["808 COLLECTION"] },
+  ]);
+
+  const nested = await userLibrarySamples("Projects");
+  assert.deepEqual(nested.samples, [
+    { path: "/Volumes/Music/808/nested.wav", bankchain: ["Projects", "808 Collection"] },
+  ]);
+});
+
+test("userLibrarySamples without a database gives an empty list and a note", async (t) => {
+  process.env.MASCHINE_DB_PATH = "/nonexistent/komplete.db3";
+  t.after(() => {
+    delete process.env.MASCHINE_DB_PATH;
+  });
+  const { userLibrarySamples } = await import("../src/lib/kits.ts");
+  const out = await userLibrarySamples("anything");
+  assert.deepEqual(out.samples, []);
+  assert.ok(out.note);
+});

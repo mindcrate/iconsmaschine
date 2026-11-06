@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
+import path from "node:path";
 import { findMaschineDb, openMaschineDb, str, tryAll } from "./maschinedb";
 import { niImageDir } from "./paths";
 import { folderName } from "./distdb";
@@ -329,6 +330,72 @@ export async function scanKits(): Promise<KitScan> {
       kits: [],
       imageDir,
       dbPath,
+      note: `Could not read the Maschine database: ${(err as Error).message}`,
+    };
+  } finally {
+    if (cleanup) await cleanup();
+  }
+}
+
+export interface SampleTarget {
+  /** Absolute path of the WAV, as Maschine recorded it. */
+  path: string;
+  /** The sample's own bank chain, entries in order, empty ones dropped. */
+  bankchain: string[];
+}
+
+/**
+ * The WAV files Maschine lists under a user library, each with the bank chain
+ * it sits in. Content Maschine installed itself is left out: it is not ours to
+ * edit.
+ */
+export async function userLibrarySamples(
+  product: string,
+): Promise<{ samples: SampleTarget[]; note?: string }> {
+  const dbPath = findMaschineDb();
+  if (!dbPath) {
+    return {
+      samples: [],
+      note: "No Maschine database found, so the library's WAV files could not be listed.",
+    };
+  }
+
+  let cleanup: (() => Promise<void>) | null = null;
+  try {
+    const opened = await openMaschineDb(dbPath);
+    cleanup = opened.cleanup;
+    try {
+      const wanted = product.trim().toLowerCase().replaceAll("'", "''");
+      const rows = tryAll(
+        opened.db,
+        `SELECT s.file_name AS file, p.path AS root,
+                b.entry1 AS e1, b.entry2 AS e2, b.entry3 AS e3
+         FROM k_sound_info s
+         JOIN k_bank_chain b ON b.id = s.bank_chain_id
+         LEFT JOIN k_content_path p ON p.id = s.content_path_id
+         WHERE lower(trim(b.entry1)) = '${wanted}' AND lower(s.file_ext) = 'wav'
+         ORDER BY s.file_name`,
+      );
+
+      const seen = new Set<string>();
+      const samples: SampleTarget[] = [];
+      for (const r of rows) {
+        const file = str(r.file);
+        if (!file || !path.isAbsolute(file) || seen.has(file)) continue;
+        if (INSTALLED_ROOTS.some((root) => str(r.root).startsWith(root))) continue;
+        seen.add(file);
+        samples.push({
+          path: file,
+          bankchain: [str(r.e1), str(r.e2), str(r.e3)].filter(Boolean),
+        });
+      }
+      return { samples };
+    } finally {
+      opened.db.close();
+    }
+  } catch (err) {
+    return {
+      samples: [],
       note: `Could not read the Maschine database: ${(err as Error).message}`,
     };
   } finally {
