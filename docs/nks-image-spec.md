@@ -329,8 +329,28 @@ folder. A perfect correlation across the whole visible set.
 
 | Content | Resolves artwork from |
 |---|---|
-| has a vendor (plugins, vendor libraries) | `image/<vendor>/<product>/` plus a dist_database entry |
-| no vendor (Expansions, user kits) | `image/<bank chain entry1>/`, lowercased, flat |
+| plugin (has a dist_database entry) | `image/<vendor>/<product>/` plus a dist_database entry |
+| other content **with** a vendor | `image/<vendor>/`, lowercased, flat |
+| other content **with no** vendor | `image/<bank chain entry1>/`, lowercased, flat |
+
+Measured across products where the vendor and the bank chain name differ:
+
+| Folder matched | Count |
+|---|---|
+| vendor only | **1,031** |
+| bank chain name only | 105 |
+| both | 7 |
+| neither | 126 |
+
+So vendor wins by roughly ten to one. The clearest case is
+`ALL HIHATS PERCUSSION` with vendor `MOOSE LIFE`: `image/moose life/` exists,
+`image/all hihats percussion/` does not.
+
+Expansions and user Groups usually carry no vendor, which is why the bank chain
+works for them (Bumpin Flava). Sample packs from a label usually do carry one,
+which is why a sample pack installed under its bank chain name shows nothing.
+The 105 name-matched products are real, so a kit keeps the other candidate as
+an alternative rather than the app pretending the rule is absolute.
 
 Maschine's `"Other"` is a catch-all rather than a real vendor, so content tagged
 with it is treated as vendor-less.

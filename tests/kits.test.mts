@@ -25,7 +25,8 @@ async function setup(t: { after: (fn: () => unknown) => void }) {
       (4,'Xfer Records','Serum',NULL,NULL),
       (5,'Other','MASCHINE KITS',NULL,NULL),
       (6,'','/Volumes/External/thing.mxgrp',NULL,NULL),
-      (7,'','Empty Chain',NULL,NULL);
+      (7,'','Empty Chain',NULL,NULL),
+      (8,'MOOSE LIFE','ALL HIHATS PERCUSSION',NULL,NULL);
     -- flags: 0+mxgrp Group, 4 one-shot, 8 loop, 1 instrument
     INSERT INTO k_sound_info VALUES
       (1,1,0,'mxgrp'),(2,1,0,'mxgrp'),
@@ -33,7 +34,8 @@ async function setup(t: { after: (fn: () => unknown) => void }) {
       (6,3,4,'wav'),
       (7,4,1,'nksf'),
       (8,5,4,'wav'),(9,5,8,'wav'),
-      (10,6,4,'wav');
+      (10,6,4,'wav'),
+      (11,8,4,'wav'),(12,8,4,'wav');
   `);
   db.close();
 
@@ -150,4 +152,49 @@ test("Groups, Samples, Instruments and Effects are classified apart", async (t) 
 
   const mk = kits.find((k) => k.name === "MASCHINE KITS")!;
   assert.deepEqual(mk.groups, ["samples"], "wav content is samples");
+});
+
+test("a kit with a vendor installs to the vendor folder, not the bank name", async (t) => {
+  // Measured on a real system: where the two differ, vendor matched an image
+  // folder 1,031 times against the bank chain's 105. image/moose life/ exists;
+  // image/all hihats percussion/ does not.
+  await setup(t);
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+
+  const hihats = kits.find((k) => k.name === "ALL HIHATS PERCUSSION")!;
+  assert.equal(hihats.folder, "moose life", "vendor wins when one is set");
+  assert.equal(hihats.altFolder, "all hihats percussion", "the name is kept as the alternative");
+});
+
+test("a kit with no vendor still uses its bank chain name", async (t) => {
+  await setup(t);
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+
+  const flava = kits.find((k) => k.name === "Bumpin Flava")!;
+  assert.equal(flava.folder, "bumpin flava");
+  assert.equal(flava.altFolder, null, "no vendor means no second candidate");
+});
+
+test("artwork found under the alternative folder is still reported", async (t) => {
+  const { image } = await setup(t);
+  // A folder named after the bank chain rather than the vendor - the 105 case.
+  await fs.mkdir(path.join(image, "all hihats percussion"), { recursive: true });
+
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+  const hihats = kits.find((k) => k.name === "ALL HIHATS PERCUSSION")!;
+  assert.equal(hihats.hasArtwork, true);
+  assert.equal(hihats.matchedBy, "name", "it matched the alternative, not the vendor");
+});
+
+test("matchedBy says which key the folder was found under", async (t) => {
+  const { image } = await setup(t);
+  await fs.mkdir(path.join(image, "moose life"), { recursive: true });
+
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+  assert.equal(kits.find((k) => k.name === "ALL HIHATS PERCUSSION")!.matchedBy, "vendor");
+  assert.equal(kits.find((k) => k.name === "Arcane Attic")!.matchedBy, "name");
 });

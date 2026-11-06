@@ -15,7 +15,9 @@ interface Kit {
   vendor: string;
   sounds: number;
   folder: string;
+  altFolder: string | null;
   hasArtwork: boolean;
+  matchedBy: "vendor" | "name" | null;
   counts: ContentCounts;
   groups: ContentGroup[];
 }
@@ -178,8 +180,8 @@ export function KitPicker({
           >
             <span className="kname">{k.name}</span>
             <span className="kmeta">
-              {describeCounts(k.counts)}
-              {k.vendor ? ` - vendor "${k.vendor}"` : ""}
+              {describeCounts(k.counts)} &rarr; image/{k.folder}/
+              {k.vendor ? ` (vendor)` : ` (bank)`}
             </span>
             <span className={k.hasArtwork ? "kbadge has" : "kbadge"}>
               {k.hasArtwork ? "has artwork" : "no artwork"}

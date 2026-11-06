@@ -358,7 +358,11 @@ export default function Page() {
               current={product}
               reloadToken={kitsToken}
               onPick={(k) => {
-                setProduct(k.name);
+                // The install folder is k.folder - the vendor when the kit has
+                // one, otherwise the bank chain name. Using the display name
+                // here would write to the wrong place for any kit with a
+                // vendor, which is most sample packs.
+                setProduct(k.vendor || k.name);
                 setName(k.name);
                 resetOutputs();
               }}

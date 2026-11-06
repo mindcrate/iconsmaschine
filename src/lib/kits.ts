@@ -13,14 +13,21 @@ import {
 /**
  * Your Maschine kits, and which of them have no artwork.
  *
- * Content with no vendor - Expansions, user kits - resolves its browser
- * artwork from `NI Resources/image/<bank chain entry1>/`, lowercased.
- * Established by correlation on a real system: every Group showing the generic
- * plug icon in the browser was exactly a bank chain with no matching image
- * folder, and every Group showing artwork had one.
+ * The folder a kit's artwork lives in is decided by whether it has a vendor:
  *
- * Content WITH a vendor follows the plugin path instead
- * (`image/<vendor>/<product>/` plus a dist_database entry).
+ *   has a vendor  ->  image/<vendor>/
+ *   no vendor     ->  image/<bank chain entry1>/
+ *
+ * Measured on a real system, across products where the two names differ:
+ * vendor matched an image folder 1,031 times, the bank chain name 105. The
+ * clearest single case is "ALL HIHATS PERCUSSION" with vendor "MOOSE LIFE" -
+ * `image/moose life/` exists, `image/all hihats percussion/` does not.
+ *
+ * Expansions and user Groups usually carry no vendor, which is why the bank
+ * chain works for them (Bumpin Flava). Sample packs from a label usually do.
+ *
+ * `altFolder` carries the other candidate, because 105 products really do
+ * match on the name instead - so the UI can offer both rather than guess.
  */
 
 export interface Kit {
@@ -30,9 +37,13 @@ export interface Kit {
   sub: string;
   vendor: string;
   sounds: number;
-  /** Folder this kit's artwork would live in, relative to image/. */
+  /** Folder this kit's artwork should live in, relative to image/. */
   folder: string;
+  /** The other candidate, when a kit has both a vendor and a name. */
+  altFolder: string | null;
   hasArtwork: boolean;
+  /** Which of the two actually has a folder on disk. */
+  matchedBy: "vendor" | "name" | null;
   /** What the kit actually holds, by content type. */
   counts: ContentCounts;
   /** The UI groupings it has content for, largest first. */
@@ -122,7 +133,12 @@ export async function scanKits(): Promise<KitScan> {
         const sounds = total(counts);
         if (sounds === 0) continue;
 
-        const folder = folderName(name);
+        // Vendor first: that is what Maschine matches on when one is set.
+        const vendorFolder = vendor ? folderName(vendor) : null;
+        const nameFolder = folderName(name);
+        const folder = vendorFolder ?? nameFolder;
+        const altFolder = vendorFolder && vendorFolder !== nameFolder ? nameFolder : null;
+
         const existing = byFolder.get(folder);
         if (existing) {
           existing.sounds += sounds;
@@ -133,14 +149,24 @@ export async function scanKits(): Promise<KitScan> {
           if (!existing.vendor && vendor) existing.vendor = vendor;
           continue;
         }
+
+        const matchedBy = folders.has(folder)
+          ? vendorFolder
+            ? ("vendor" as const)
+            : ("name" as const)
+          : altFolder && folders.has(altFolder)
+            ? ("name" as const)
+            : null;
+
         byFolder.set(folder, {
           name,
           sub: str(r.entry2),
           vendor,
           sounds,
           folder,
-          hasArtwork:
-            folders.has(folder) || (vendor !== "" && folders.has(folderName(vendor))),
+          altFolder,
+          hasArtwork: matchedBy !== null,
+          matchedBy,
           counts,
           groups: groupsPresent(counts),
         });
