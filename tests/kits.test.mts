@@ -198,3 +198,28 @@ test("matchedBy says which key the folder was found under", async (t) => {
   assert.equal(kits.find((k) => k.name === "ALL HIHATS PERCUSSION")!.matchedBy, "vendor");
   assert.equal(kits.find((k) => k.name === "Arcane Attic")!.matchedBy, "name");
 });
+
+test("a kit sharing a vendor's artwork is distinguishable from one with its own", async (t) => {
+  const { image } = await setup(t);
+  await fs.mkdir(path.join(image, "moose life"), { recursive: true });
+
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+
+  // ALL HIHATS PERCUSSION has vendor MOOSE LIFE: it resolves to that vendor's
+  // folder, so it shows MOOSE LIFE's art rather than its own. The UI needs to
+  // tell those apart, which is what hid Voodoo behind MOOSE LIFE.
+  const hihats = kits.find((k) => k.name === "ALL HIHATS PERCUSSION")!;
+  assert.equal(hihats.hasArtwork, true);
+  assert.equal(hihats.matchedBy, "vendor");
+  assert.notEqual(
+    hihats.vendor.toLowerCase(),
+    hihats.name.toLowerCase(),
+    "vendor and name differ, so the artwork is shared not its own",
+  );
+
+  // Arcane Attic has no vendor and its own folder - genuinely done.
+  const arcane = kits.find((k) => k.name === "Arcane Attic")!;
+  assert.equal(arcane.matchedBy, "name");
+  assert.equal(arcane.vendor, "");
+});

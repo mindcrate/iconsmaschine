@@ -96,7 +96,16 @@ export function KitPicker({
     );
   }
 
-  const missing = scan.kits.filter((k) => !k.hasArtwork);
+  // A kit whose artwork comes from a shared vendor folder is not really
+  // "done" - it is showing some other product's art. Treat it as needing
+  // attention so it does not vanish from the list, which is exactly what hid
+  // Voodoo behind MOOSE LIFE's folder.
+  const sharesVendorArt = (k: Kit) =>
+    k.hasArtwork &&
+    k.matchedBy === "vendor" &&
+    k.vendor.trim().toLowerCase() !== k.name.trim().toLowerCase();
+
+  const missing = scan.kits.filter((k) => !k.hasArtwork || sharesVendorArt(k));
   const pool = showAll ? scan.kits : missing;
   const shown = pool
     .filter((k) => group === "all" || k.groups.includes(group))
@@ -113,7 +122,7 @@ export function KitPicker({
         <span>
           Your kits
           <span className="sub">
-            {missing.length} of {scan.kits.length} have no artwork
+            {missing.length} of {scan.kits.length} need artwork
           </span>
         </span>
         <button
@@ -183,8 +192,21 @@ export function KitPicker({
               {describeCounts(k.counts)} &rarr; image/{k.folder}/
               {k.vendor ? ` (vendor)` : ` (bank)`}
             </span>
-            <span className={k.hasArtwork ? "kbadge has" : "kbadge"}>
-              {k.hasArtwork ? "has artwork" : "no artwork"}
+            <span
+              className={
+                k.hasArtwork && !sharesVendorArt(k) ? "kbadge has" : "kbadge"
+              }
+              title={
+                sharesVendorArt(k)
+                  ? `Showing the artwork of vendor "${k.vendor}", shared with its other products`
+                  : undefined
+              }
+            >
+              {!k.hasArtwork
+                ? "no artwork"
+                : sharesVendorArt(k)
+                  ? `shares "${k.vendor}" art`
+                  : "has artwork"}
             </span>
           </button>
         ))}
