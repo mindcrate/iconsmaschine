@@ -18,9 +18,39 @@ import { DatabaseSync } from "node:sqlite";
 
 const [broken = "voodoo", working = "msxii"] = process.argv.slice(2);
 const imageDir = process.env.NI_RESOURCES_IMAGE_DIR ?? "/Users/Shared/NI Resources/image";
-const dbPath =
-  process.env.MASCHINE_DB_PATH ??
-  path.join(os.homedir(), "Library/Application Support/Native Instruments/Maschine 2/komplete.db3");
+/**
+ * The browser database Maschine is actually writing.
+ *
+ * Not a fixed path: on a machine running Maschine 3, the Maschine 2 file still
+ * exists, is bigger, has more bank chains, and stopped being written when
+ * Maschine 3 took over. Pick the most recently written instead, counting the
+ * -wal, since changes sit there until a checkpoint.
+ */
+function liveMaschineDb() {
+  if (process.env.MASCHINE_DB_PATH) return process.env.MASCHINE_DB_PATH;
+  const roots = [
+    path.join(os.homedir(), "Library/Application Support/Native Instruments"),
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Native Instruments") : "",
+  ].filter(Boolean);
+  let best = null;
+  for (const r of roots) {
+    let apps;
+    try {
+      apps = fs.readdirSync(r, { withFileTypes: true }).filter((e) => e.isDirectory());
+    } catch { continue; }
+    for (const a of apps) {
+      const p = path.join(r, a.name, "komplete.db3");
+      let when = 0;
+      for (const ext of ["", "-wal"]) {
+        try { when = Math.max(when, fs.statSync(p + ext).mtimeMs); }
+        catch { if (!ext) break; }
+      }
+      if (when > 0 && (!best || when > best.when)) best = { p, when };
+    }
+  }
+  return best ? best.p : "";
+}
+const dbPath = liveMaschineDb();
 if (!fs.existsSync(dbPath)) { console.log("No komplete.db3 at " + dbPath); process.exit(0); }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "im-diff-"));

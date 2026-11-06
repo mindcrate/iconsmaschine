@@ -95,9 +95,26 @@ for (const [ext, list] of [...found].sort()) {
 }
 
 console.log("\n===== How Maschine records user content =====");
-const db = [
-  path.join(home, "Library/Application Support/Native Instruments/Maschine 2/komplete.db3"),
-].find((p) => fs.existsSync(p));
+// The most recently written komplete.db3, not a fixed version's path: an
+// older install's file lingers and looks perfectly plausible.
+const niRoot = path.join(home, "Library/Application Support/Native Instruments");
+let db = process.env.MASCHINE_DB_PATH ?? "";
+if (!db) {
+  let newest = 0;
+  let apps = [];
+  try {
+    apps = fs.readdirSync(niRoot, { withFileTypes: true }).filter((e) => e.isDirectory());
+  } catch {}
+  for (const a of apps) {
+    const p = path.join(niRoot, a.name, "komplete.db3");
+    let when = 0;
+    for (const ext of ["", "-wal"]) {
+      try { when = Math.max(when, fs.statSync(p + ext).mtimeMs); }
+      catch { if (!ext) break; }
+    }
+    if (when > newest) { newest = when; db = p; }
+  }
+}
 if (!db) {
   console.log("  komplete.db3 not found");
 } else {
