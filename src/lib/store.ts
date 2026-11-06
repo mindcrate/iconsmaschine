@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { packsDir, safeJoin } from "./paths";
 import type { KitType } from "./spec";
 import type { CropMap } from "./crop";
+import type { TextOverlay } from "./overlayspec";
 
 export interface Pack {
   id: string;
@@ -45,6 +46,12 @@ export interface Pack {
    * Plugins nest regardless, via their dist_database entry.
    */
   nestImage: boolean;
+  /**
+   * Text burned into the logo and banner files, with the artwork behind it
+   * dimmed or replaced by a flat colour. Null when the pack uses artwork
+   * alone, which is the default.
+   */
+  overlay: TextOverlay | null;
   /** Hand-adjusted crops, keyed by output filename. */
   crops: CropMap;
   /**

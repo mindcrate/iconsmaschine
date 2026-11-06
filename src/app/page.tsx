@@ -8,6 +8,9 @@ import { LibraryPanel } from "@/components/LibraryPanel";
 import { CropEditor } from "@/components/CropEditor";
 import { KitPicker } from "@/components/KitPicker";
 import { PresetEditor } from "@/components/PresetEditor";
+import { OverlayControls } from "@/components/OverlayControls";
+import { DEFAULT_OVERLAY, type TextOverlay } from "@/lib/overlayspec";
+import { specsFor } from "@/lib/spec";
 
 /**
  * How a display name becomes a folder name on disk. Mirrors folderName() in
@@ -50,6 +53,9 @@ export default function Page() {
   const [background, setBackground] = useState("#101010");
   const [transparent, setTransparent] = useState(true);
   const [padding, setPadding] = useState(0.08);
+  // Text burned into the logo and banner files. Empty text means no overlay,
+  // so this can be held as a plain value rather than a nullable one.
+  const [overlay, setOverlay] = useState<TextOverlay>(DEFAULT_OVERLAY);
 
   const [artwork, setArtwork] = useState<ArtworkSource | null>(null);
   const [logo, setLogo] = useState<ArtworkSource | null>(null);
@@ -138,6 +144,7 @@ export default function Page() {
     setBackground("#101010");
     setTransparent(true);
     setPadding(0.08);
+    setOverlay(DEFAULT_OVERLAY);
     setArtwork(null);
     setLogo(null);
     setUseSeparateLogo(false);
@@ -172,6 +179,7 @@ export default function Page() {
       form.set("author", author);
       form.set("share", String(share));
       form.set("nestImage", String(nestImage));
+      form.set("overlay", JSON.stringify(overlay));
       form.set("tags", tags);
       form.set("nks2", String(nks2));
       form.set("background", transparent ? "" : background);
@@ -206,6 +214,7 @@ export default function Page() {
       form.set("author", author);
       form.set("share", String(share));
       form.set("nestImage", String(nestImage));
+      form.set("overlay", JSON.stringify(overlay));
       form.set("tags", tags);
       form.set("crops", JSON.stringify(crops));
       form.set("nks2", String(nks2));
@@ -252,6 +261,7 @@ export default function Page() {
     setTransparent(pack.background === null);
     if (pack.background) setBackground(pack.background);
     setPadding(pack.padding);
+    setOverlay(pack.overlay ?? DEFAULT_OVERLAY);
     setPackId(pack.id);
     setCrops(pack.crops ?? {});
     setPreview(null);
@@ -748,6 +758,15 @@ export default function Page() {
             </div>
           </div>
         </section>
+
+        <OverlayControls
+          value={overlay}
+          onChange={(next) => {
+            setOverlay(next);
+            setPreview(null);
+          }}
+          files={specsFor({ nks2 }).map((sp) => sp.file)}
+        />
 
         <section className="step">
           <h2>

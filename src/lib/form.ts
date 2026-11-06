@@ -2,6 +2,7 @@ import sharp from "sharp";
 import { KIT_TYPES, validateFolderName, type KitType } from "./spec";
 import { clampCrop, isValidCrop, type CropMap } from "./crop";
 import type { Pack } from "./store";
+import { parseOverlay, type TextOverlay } from "./overlayspec";
 
 export class BadRequest extends Error {
   constructor(message: string) {
@@ -106,7 +107,21 @@ export function readPackFields(
     }
   }
 
+  // The overlay arrives as JSON, like crops. A malformed one drops back to no
+  // overlay rather than failing the save: losing a pack over a text setting
+  // would be a poor trade.
+  let overlay: TextOverlay | null = null;
+  const rawOverlay = str(form, "overlay");
+  if (rawOverlay) {
+    try {
+      overlay = parseOverlay(JSON.parse(rawOverlay));
+    } catch {
+      overlay = null;
+    }
+  }
+
   return {
+    overlay,
     name: str(form, "name").trim() || product,
     kitType,
     vendor,

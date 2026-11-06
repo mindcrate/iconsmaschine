@@ -277,3 +277,50 @@ test("a dedicated logo is still fitted whole, never clipped", async () => {
   const artStats = await sharp(art.buffer).stats();
   assert.ok((artStats.channels[3]?.mean ?? 255) / 255 > 0.99);
 });
+
+test("an overlay reaches the files it names and leaves the others alone", async () => {
+  const { renderPack } = await import("../src/lib/render.ts");
+  const { DEFAULT_OVERLAY } = await import("../src/lib/overlayspec.ts");
+  const { specsFor } = await import("../src/lib/spec.ts");
+
+  const artwork = await sharp({
+    create: { width: 600, height: 600, channels: 4, background: "#2060c0" },
+  })
+    .png()
+    .toBuffer();
+
+  const specs = specsFor({ nks2: false });
+  const plain = await renderPack({ artwork }, specs, {});
+  const withText = await renderPack({ artwork }, specs, {
+    overlay: {
+      ...DEFAULT_OVERLAY,
+      text: "808 COLLECTION",
+      files: ["MST_logo.png"],
+    },
+  });
+
+  const get = (files: typeof plain, name: string) =>
+    files.find((f) => f.file === name)!.buffer;
+
+  // The named file changes...
+  assert.notEqual(
+    get(plain, "MST_logo.png").toString("base64"),
+    get(withText, "MST_logo.png").toString("base64"),
+    "the overlay should have altered MST_logo.png",
+  );
+  // ...and nothing else does.
+  for (const spec of specs) {
+    if (spec.file === "MST_logo.png") continue;
+    assert.equal(
+      get(plain, spec.file).toString("base64"),
+      get(withText, spec.file).toString("base64"),
+      `${spec.file} should be untouched`,
+    );
+  }
+
+  // Still the spec size: the overlay composites, it does not resize.
+  const meta = await sharp(get(withText, "MST_logo.png")).metadata();
+  const spec = specs.find((s) => s.file === "MST_logo.png")!;
+  assert.equal(meta.width, spec.width);
+  assert.equal(meta.height, spec.height);
+});

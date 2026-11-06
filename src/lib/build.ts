@@ -25,7 +25,7 @@ export async function buildPack(
   const files = await renderPack(
     { artwork: sources.artwork, logo: sources.logo },
     specsFor({ nks2: pack.nks2 }),
-    { background: pack.background, padding: pack.padding },
+    { background: pack.background, padding: pack.padding, overlay: pack.overlay },
     pack.crops ?? {},
   );
 

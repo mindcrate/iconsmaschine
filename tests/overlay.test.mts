@@ -165,3 +165,41 @@ test("hex colours are normalised, and nonsense falls back", () => {
   assert.equal(normaliseHexColor("not a colour"), "#ffffff");
   assert.equal(normaliseHexColor("nope", "#123456"), "#123456");
 });
+
+test("parseOverlay clamps hostile input instead of trusting it", async () => {
+  const { parseOverlay, DEFAULT_OVERLAY } = await import("../src/lib/overlay.ts");
+
+  // Nothing to draw is the same as no overlay.
+  assert.equal(parseOverlay({ text: "   " }), null);
+  assert.equal(parseOverlay(null), null);
+  assert.equal(parseOverlay("nope"), null);
+
+  const o = parseOverlay({
+    text: "x".repeat(500),
+    weight: "heavy",
+    align: "justified",
+    color: "not a colour",
+    sizePct: 99,
+    letterSpacing: -9999,
+    backgroundOpacity: 7,
+    backgroundColor: "#ABCDEF",
+    files: [1, "MST_logo.png", null, "OSO_logo.png"],
+  })!;
+
+  assert.equal(o.text.length, 200, "text is bounded");
+  assert.equal(o.weight, DEFAULT_OVERLAY.weight, "an unknown weight falls back");
+  assert.equal(o.align, DEFAULT_OVERLAY.align);
+  assert.equal(o.color, DEFAULT_OVERLAY.color, "an unparseable colour falls back");
+  assert.equal(o.sizePct, 1, "size is clamped to the box");
+  assert.equal(o.letterSpacing, -20);
+  assert.equal(o.backgroundOpacity, 1);
+  assert.equal(o.backgroundColor, "#abcdef", "hex is normalised to lowercase");
+  assert.deepEqual(o.files, ["MST_logo.png", "OSO_logo.png"], "non-strings dropped");
+});
+
+test("parseOverlay keeps a transparent background distinct from a colour", async () => {
+  const { parseOverlay } = await import("../src/lib/overlay.ts");
+  assert.equal(parseOverlay({ text: "a", backgroundColor: null })!.backgroundColor, null);
+  assert.equal(parseOverlay({ text: "a" })!.backgroundColor, null);
+  assert.equal(parseOverlay({ text: "a", backgroundColor: "#112233" })!.backgroundColor, "#112233");
+});
