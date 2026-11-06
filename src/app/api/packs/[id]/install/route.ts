@@ -1,7 +1,7 @@
 import { buildPack, distDbInputFor, PackNotFound } from "@/lib/build";
 import { jsonError } from "@/lib/form";
 import { install, planInstall, uninstall } from "@/lib/install";
-import { scanKits } from "@/lib/kits";
+import { scanKits, userLibrarySamples } from "@/lib/kits";
 import { needsDistDb, savePack } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -21,18 +21,30 @@ export async function POST(request: Request, { params }: Ctx) {
     };
     const { pack, files } = await buildPack(id);
 
+    const distDb = distDbInputFor(pack);
+    // A user sample pack nests under its vendor without a dist_database
+    // entry. Plugins already nest through theirs.
+    const imageVendor = pack.nestImage && pack.vendor ? pack.vendor : null;
+    const library =
+      !distDb && imageVendor ? await userLibrarySamples(pack.product) : null;
+
     const input = {
       product: pack.product,
       vendor: pack.vendor,
       files,
-      distDb: distDbInputFor(pack),
-      // A user sample pack nests under its vendor without a dist_database
-      // entry. Plugins already nest through theirs.
-      imageVendor: pack.nestImage && pack.vendor ? pack.vendor : null,
+      distDb,
+      imageVendor,
+      samples: library?.samples ?? null,
       previous: pack.installedAs,
     };
 
     const plan = await planInstall(input);
+    if (library && library.samples.length === 0) {
+      plan.warnings.push(
+        library.note ??
+          "Maschine 3 lists no WAV files for this library, so no tags will be written and it may stay under Other. Let Maschine scan the library first, then install again.",
+      );
+    }
     await warnIfMaschineDisagrees(plan, pack.product);
     if (body.dryRun !== false) return Response.json({ plan });
 

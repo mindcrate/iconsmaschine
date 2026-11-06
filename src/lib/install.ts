@@ -4,6 +4,8 @@ import { niDistDatabaseDir, niImageDir, safeJoin } from "./paths";
 import { metaBuffer } from "./nimeta";
 import { buildDistDbFiles, folderName, type DistDbInput } from "./distdb";
 import type { RenderedFile } from "./render";
+import type { SampleTarget } from "./kits";
+import { tagSample } from "./wavtag";
 
 export interface PlannedWrite {
   /** Which NI Resources tree this file lands in. */
@@ -27,6 +29,8 @@ export interface InstallPlan {
   warnings: string[];
   /** Folders a rename has left behind, which Install can also clean up. */
   staleDirs: string[];
+  /** The WAV files that would get a vendor and bank tag. null when none apply. */
+  samples: { count: number; folders: string[] } | null;
 }
 
 export interface InstallInput {
@@ -46,6 +50,12 @@ export interface InstallInput {
    * already nests.
    */
   imageVendor?: string | null;
+  /**
+   * The WAV files of a nested user sample pack, each with the bank chain
+   * Maschine lists it under. Install writes `imageVendor` and that chain into
+   * each file's tag, which is what moves the library out of "Other".
+   */
+  samples?: SampleTarget[] | null;
   /**
    * Where this pack was last installed, when that differs from where it would
    * go now. Renaming moves the install path, and without this the previous
@@ -116,7 +126,9 @@ function buildFileSet(input: InstallInput) {
 
   const distDbFiles = input.distDb ? buildDistDbFiles(input.distDb) : [];
 
-  return { productFolder, imageSegments, imageFiles, distDbFiles };
+  const samples = nestedUserPack ? (input.samples ?? null) : null;
+
+  return { productFolder, imageSegments, imageFiles, distDbFiles, samples };
 }
 
 export async function planInstall(input: InstallInput): Promise<InstallPlan> {
@@ -124,7 +136,7 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
   const distDbRoot = niDistDatabaseDir();
   const warnings: string[] = [];
 
-  const { productFolder, imageSegments, imageFiles, distDbFiles } =
+  const { productFolder, imageSegments, imageFiles, distDbFiles, samples } =
     buildFileSet(input);
   const imageDir = safeJoin(imageRoot, ...imageSegments);
   const distDbDir = input.distDb
@@ -199,6 +211,12 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
     rootWritable,
     warnings,
     staleDirs,
+    samples: samples
+      ? {
+          count: samples.length,
+          folders: [...new Set(samples.map((t) => path.dirname(t.path)))].sort(),
+        }
+      : null,
   };
 }
 
@@ -254,6 +272,55 @@ export interface InstallResult {
   written: string[];
   /** Folders removed because a rename stranded them. */
   cleaned: string[];
+  /** What happened to each sample's tag. null when the pack has no samples. */
+  samples: SampleTagResult | null;
+}
+
+export interface SampleTagResult {
+  tagged: number;
+  unchanged: number;
+  skipped: { file: string; reason: string }[];
+}
+
+/**
+ * Tags each sample in place. A file that is missing or refused is recorded and
+ * the rest carry on. The new bytes go to a temp file beside the original and
+ * are renamed over it, so a crash never leaves half a WAV. The rename gives the
+ * file a new modified time, which Maschine's start-up scan needs to notice it.
+ */
+async function tagSamples(targets: SampleTarget[], vendor: string): Promise<SampleTagResult> {
+  const result: SampleTagResult = { tagged: 0, unchanged: 0, skipped: [] };
+
+  for (const target of targets) {
+    const temp = path.join(path.dirname(target.path), `.${path.basename(target.path)}.iconmaschine-tmp`);
+    try {
+      const wav = await fs.readFile(target.path);
+      const outcome = tagSample(wav, {
+        vendor,
+        bankchain: target.bankchain,
+        name: path.basename(target.path, path.extname(target.path)),
+      });
+      if (outcome.kind === "refused") {
+        result.skipped.push({ file: target.path, reason: outcome.reason });
+      } else if (outcome.kind === "unchanged") {
+        result.unchanged++;
+      } else {
+        const { mode } = await fs.stat(target.path);
+        await fs.writeFile(temp, outcome.buffer, { mode });
+        await fs.rename(temp, target.path);
+        result.tagged++;
+      }
+    } catch (err) {
+      const missing = (err as NodeJS.ErrnoException).code === "ENOENT";
+      result.skipped.push({
+        file: target.path,
+        reason: missing ? "The file is not there." : (err as Error).message,
+      });
+    } finally {
+      await fs.rm(temp, { force: true });
+    }
+  }
+  return result;
 }
 
 export async function install(
@@ -262,7 +329,7 @@ export async function install(
 ): Promise<InstallResult> {
   const imageRoot = niImageDir();
   const distDbRoot = niDistDatabaseDir();
-  const { productFolder, imageSegments, imageFiles, distDbFiles } =
+  const { productFolder, imageSegments, imageFiles, distDbFiles, samples } =
     buildFileSet(input);
 
   const imageDir = safeJoin(imageRoot, ...imageSegments);
@@ -303,7 +370,9 @@ export async function install(
     }
   }
 
-  return { imageDir, distDbDir, written, cleaned };
+  const sampleResult = samples ? await tagSamples(samples, input.imageVendor!) : null;
+
+  return { imageDir, distDbDir, written, cleaned, samples: sampleResult };
 }
 
 /**

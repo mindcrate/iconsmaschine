@@ -494,3 +494,103 @@ test("a flat expansion's image .meta carries no vendor at all", async (t) => {
   assert.equal(meta.includes("<vendor>"), false);
   assert.match(meta, /<name>Bumpin Flava<\/name>/);
 });
+
+/* ---- tagging a user library's samples ---- */
+
+async function sampleLibrary(base: string, names: string[]) {
+  const { serialiseRiff } = await import("../src/lib/riff.ts");
+  const dir = path.join(base, "808");
+  await fs.mkdir(dir, { recursive: true });
+  const audio = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]);
+  const wav = serialiseRiff({
+    form: "WAVE",
+    chunks: [
+      { id: "fmt ", data: Buffer.alloc(16, 1) },
+      { id: "data", data: audio },
+    ],
+  });
+  const targets = [];
+  for (const n of names) {
+    const p = path.join(dir, n);
+    await fs.writeFile(p, wav);
+    targets.push({ path: p, bankchain: ["808 COLLECTION"] });
+  }
+  return { dir, wav, audio, targets };
+}
+
+const packInput = (samples: { path: string; bankchain: string[] }[]) => ({
+  product: "808 COLLECTION",
+  vendor: "tim moose",
+  files,
+  distDb: null,
+  imageVendor: "tim moose",
+  samples,
+});
+
+test("install tags each sample and leaves the audio alone", async (t) => {
+  const { base } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+  const { readSoundInfo } = await import("../src/lib/wavtag.ts");
+  const { parseRiff } = await import("../src/lib/riff.ts");
+  const lib = await sampleLibrary(base, ["kick.wav", "snare.wav"]);
+
+  const result = await install(packInput(lib.targets));
+  assert.deepEqual(result.samples, { tagged: 2, unchanged: 0, skipped: [] });
+
+  const after = await fs.readFile(lib.targets[0].path);
+  const info = readSoundInfo(after)!;
+  assert.equal(info.vendor, "tim moose");
+  assert.deepEqual(info.bankchain, ["808 COLLECTION"]);
+  assert.equal(info.name, "kick");
+  const data = parseRiff(after, "WAVE").chunks.find((c) => c.id === "data")!;
+  assert.ok(data.data.equals(lib.audio));
+
+  const again = await install(packInput(lib.targets));
+  assert.deepEqual(again.samples, { tagged: 0, unchanged: 2, skipped: [] });
+});
+
+test("the plan counts samples and folders and writes nothing", async (t) => {
+  const { base } = await tempRoot(t);
+  const { planInstall } = await import("../src/lib/install.ts");
+  const lib = await sampleLibrary(base, ["kick.wav", "snare.wav"]);
+
+  const plan = await planInstall(packInput(lib.targets));
+  assert.deepEqual(plan.samples, { count: 2, folders: [lib.dir] });
+  for (const tgt of lib.targets) {
+    assert.ok((await fs.readFile(tgt.path)).equals(lib.wav), "plan must not touch a WAV");
+  }
+});
+
+test("a missing sample is skipped with a reason and the others are still tagged", async (t) => {
+  const { base } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+  const lib = await sampleLibrary(base, ["kick.wav", "snare.wav"]);
+  const gone = { path: path.join(lib.dir, "gone.wav"), bankchain: ["808 COLLECTION"] };
+  await fs.writeFile(path.join(lib.dir, "notes.wav"), "not a wav at all");
+  const notWav = { path: path.join(lib.dir, "notes.wav"), bankchain: ["808 COLLECTION"] };
+
+  const result = await install(packInput([gone, ...lib.targets, notWav]));
+  assert.equal(result.samples!.tagged, 2);
+  assert.deepEqual(result.samples!.skipped.map((s) => s.file), [gone.path, notWav.path]);
+  assert.ok(result.samples!.skipped.every((s) => s.reason.length > 0));
+  assert.equal(await fs.readFile(notWav.path, "utf8"), "not a wav at all");
+});
+
+test("no temp files are left beside the samples", async (t) => {
+  const { base } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+  const lib = await sampleLibrary(base, ["kick.wav", "snare.wav"]);
+  await install(packInput(lib.targets));
+  assert.deepEqual((await fs.readdir(lib.dir)).sort(), ["kick.wav", "snare.wav"]);
+});
+
+test("samples are ignored for a pack that is not a nested user pack", async (t) => {
+  const { base } = await tempRoot(t);
+  const { install, planInstall } = await import("../src/lib/install.ts");
+  const lib = await sampleLibrary(base, ["kick.wav"]);
+  const input = { ...packInput(lib.targets), imageVendor: null };
+
+  assert.equal((await planInstall(input)).samples, null);
+  assert.equal((await install(input)).samples, null);
+  assert.ok((await fs.readFile(lib.targets[0].path)).equals(lib.wav));
+});

@@ -148,6 +148,19 @@ export function InstallPanel({
             );
           })}
 
+          {plan.samples && plan.samples.count > 0 && (
+            <div className="note">
+              {plan.samples.count} WAV file{plan.samples.count === 1 ? "" : "s"} will get
+              the vendor and bank tag, so Maschine lists them under the vendor
+              and not under Other. The audio is not changed.
+              <div style={{ marginTop: 6, fontFamily: "var(--mono)", fontSize: 11.5 }}>
+                {plan.samples.folders.map((f) => (
+                  <div key={f}>{f}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {plan.warnings.map((w) => (
             <div className="note" key={w}>
               {w}
@@ -212,6 +225,22 @@ export function InstallPanel({
               </>
             )}
           </div>
+          {result.samples && (
+            <div style={{ marginTop: 8 }}>
+              Tagged {result.samples.tagged} WAV file
+              {result.samples.tagged === 1 ? "" : "s"}. {result.samples.unchanged} already
+              had the tag. {result.samples.skipped.length} skipped.
+              {result.samples.skipped.length > 0 && (
+                <div style={{ marginTop: 4, fontFamily: "var(--mono)", fontSize: 11.5 }}>
+                  {result.samples.skipped.map((s) => (
+                    <div key={s.file}>
+                      {s.file}: {s.reason}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <div style={{ marginTop: 8 }}>
             <strong>Fully quit and relaunch Maschine</strong> - a browser rescan
             alone often does not pick these up.
