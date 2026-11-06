@@ -54,6 +54,9 @@ export function OverlayControls({
         : [...value.files, file],
     );
 
+  const allPicked = files.length > 0 && files.every((f) => value.files.includes(f.file));
+  const toggleAll = () => set("files", allPicked ? [] : files.map((f) => f.file));
+
   const on = value.text.trim().length > 0;
 
   return (
@@ -220,6 +223,14 @@ export function OverlayControls({
           <div className="field">
             <label>
               Apply to<span className="sub">{value.files.length} selected</span>
+              <button
+                type="button"
+                className="btn ghost small"
+                style={{ marginLeft: 10 }}
+                onClick={toggleAll}
+              >
+                {allPicked ? "Clear all" : "Select all"}
+              </button>
             </label>
             <p className="hint" style={{ margin: "0 0 10px" }}>
               Filenames are NI's, not yours - the picture and the note under
