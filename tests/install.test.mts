@@ -391,3 +391,61 @@ test("reinstalling under the same name reports nothing stale", async (t) => {
   assert.deepEqual(plan.staleDirs, []);
   assert.ok(plan.writes.every((w) => w.existing !== null), "all files overwrite");
 });
+
+test("a user sample pack nests under its vendor with no dist_database entry", async (t) => {
+  const { image } = await tempRoot(t);
+  const { planInstall, install } = await import("../src/lib/install.ts");
+
+  // The layout measured on a real system: image/moose life/ holds no files of
+  // its own, only ALL BREAKS/, VOCALS/, VOODOO/ and the rest, each with its
+  // own set and .meta. This is what the original app produced and what my
+  // flat image/voodoo/ did not.
+  const input = {
+    product: "Voodoo",
+    vendor: "Moose Life",
+    files: [{ file: "MST_artwork.png", buffer: Buffer.from("a") }],
+    distDb: null,
+    imageVendor: "Moose Life",
+  };
+
+  const plan = await planInstall(input);
+  assert.equal(plan.imageDir.endsWith(path.join("image", "moose life", "voodoo")), true);
+  // Nesting must not drag a dist_database entry along with it.
+  assert.equal(plan.distDbDir, null);
+  assert.equal(
+    plan.writes.some((w) => w.tree === "dist_database"),
+    false,
+  );
+
+  await install(input);
+  assert.deepEqual(
+    (await fs.readdir(path.join(image, "moose life", "voodoo"))).sort(),
+    ["MST_artwork.png", "voodoo.meta"],
+  );
+  // And nothing at the flat location, which is the expansion layout.
+  await assert.rejects(() => fs.stat(path.join(image, "voodoo")));
+});
+
+test("renaming out of a nested layout leaves the old folder flagged", async (t) => {
+  const { image } = await tempRoot(t);
+  // The stale folder must exist to be reported.
+  await fs.mkdir(path.join(image, "moose life", "voodoo"), { recursive: true });
+  await fs.writeFile(path.join(image, "moose life", "voodoo", "MST_artwork.png"), "a");
+  const { planInstall } = await import("../src/lib/install.ts");
+
+  const plan = await planInstall({
+    product: "Voodoo",
+    vendor: "Moose Life",
+    files: [{ file: "MST_artwork.png", buffer: Buffer.from("a") }],
+    distDb: null,
+    imageVendor: null,
+    previous: { vendor: "Moose Life", product: "Voodoo", distDb: false, nested: true },
+  });
+
+  // Same names, different shape: the nested folder is now orphaned.
+  assert.equal(plan.staleDirs.length, 1);
+  assert.equal(
+    plan.staleDirs[0].endsWith(path.join("image", "moose life", "voodoo")),
+    true,
+  );
+});

@@ -2,25 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getJson } from "@/lib/client";
-import {
-  describeCounts,
-  GROUP_LABELS,
-  type ContentCounts,
-  type ContentGroup,
-} from "@/lib/contenttype";
-
-interface Kit {
-  name: string;
-  sub: string;
-  vendor: string;
-  sounds: number;
-  folder: string;
-  altFolder: string | null;
-  hasArtwork: boolean;
-  matchedBy: "vendor" | "name" | null;
-  counts: ContentCounts;
-  groups: ContentGroup[];
-}
+import { describeCounts, GROUP_LABELS, type ContentGroup } from "@/lib/contenttype";
+// Type-only, so nothing from the server module reaches the browser bundle.
+// It was duplicated here and drifted: the copy lacked fields the scanner had
+// been returning all along.
+import type { Kit } from "@/lib/kits";
 
 interface KitScan {
   kits: Kit[];
@@ -105,7 +91,12 @@ export function KitPicker({
     k.matchedBy === "vendor" &&
     k.vendor.trim().toLowerCase() !== k.name.trim().toLowerCase();
 
-  const missing = scan.kits.filter((k) => !k.hasArtwork || sharesVendorArt(k));
+  // A kit whose audio is gone cannot be given artwork that would ever show.
+  // Maschine keeps the bank chain after a library is deleted, so these pile up
+  // - one machine carried ~700. They stay reachable under "show all".
+  const missing = scan.kits.filter(
+    (k) => !k.contentMissing && (!k.hasArtwork || sharesVendorArt(k)),
+  );
   const pool = showAll ? scan.kits : missing;
   const shown = pool
     .filter((k) => group === "all" || k.groups.includes(group))
@@ -190,23 +181,31 @@ export function KitPicker({
             <span className="kname">{k.name}</span>
             <span className="kmeta">
               {describeCounts(k.counts)} &rarr; image/{k.folder}/
-              {k.vendor ? ` (vendor)` : ` (bank)`}
+              {k.nestUnder ? " (nested)" : " (flat)"}
             </span>
             <span
               className={
-                k.hasArtwork && !sharesVendorArt(k) ? "kbadge has" : "kbadge"
+                k.contentMissing
+                  ? "kbadge gone"
+                  : k.hasArtwork && !sharesVendorArt(k)
+                    ? "kbadge has"
+                    : "kbadge"
               }
               title={
-                sharesVendorArt(k)
-                  ? `Showing the artwork of vendor "${k.vendor}", shared with its other products`
-                  : undefined
+                k.contentMissing
+                  ? "Maschine still lists this kit, but none of its audio folders are on disk. Deleted, moved, or on a drive that is not mounted."
+                  : sharesVendorArt(k)
+                    ? `Showing the artwork of vendor "${k.vendor}", shared with its other products`
+                    : undefined
               }
             >
-              {!k.hasArtwork
-                ? "no artwork"
-                : sharesVendorArt(k)
-                  ? `shares "${k.vendor}" art`
-                  : "has artwork"}
+              {k.contentMissing
+                ? "content missing"
+                : !k.hasArtwork
+                  ? "no artwork"
+                  : sharesVendorArt(k)
+                    ? `shares "${k.vendor}" art`
+                    : "has artwork"}
             </span>
           </button>
         ))}

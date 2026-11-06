@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { findMaschineDb, openMaschineDb, str, tryAll } from "./maschinedb";
 import { niImageDir } from "./paths";
 import { folderName } from "./distdb";
@@ -38,6 +39,12 @@ import {
  * folder name.
  */
 
+/**
+ * Where an installed library's audio lives. Content outside these is something
+ * the user added through Preferences > Library > User, and nests in image/.
+ */
+const INSTALLED_ROOTS = ["/Users/Shared/", "/Library/", "/Applications/"];
+
 export interface Kit {
   /** The bank chain's first entry - what names the image folder. */
   name: string;
@@ -51,7 +58,19 @@ export interface Kit {
   altFolder: string | null;
   hasArtwork: boolean;
   /** Which of the two actually has a folder on disk. */
-  matchedBy: "vendor" | "name" | null;
+  matchedBy: "nested" | "name" | "vendor" | null;
+  /**
+   * Vendor folder this kit's artwork nests under, when it is content the user
+   * added. null for an installed expansion, which sits flat.
+   */
+  nestUnder: string | null;
+  /**
+   * True when none of the folders holding this kit's audio is on disk any
+   * more. Maschine keeps the bank chain after a library is removed, so these
+   * rows outlive the content and cannot be given artwork that would ever
+   * show. May also mean the drive is simply not mounted.
+   */
+  contentMissing: boolean;
   /** What the kit actually holds, by content type. */
   counts: ContentCounts;
   /** The UI groupings it has content for, largest first. */
@@ -92,35 +111,40 @@ export async function scanKits(): Promise<KitScan> {
   // least one of the files we write - directly, or in a subfolder, since a
   // plugin vendor's images sit one level down in `image/<vendor>/<product>/`.
   const artFiles = new Set(IMAGE_SPECS.map((s) => s.file.toLowerCase()));
-  const hasArt = async (dir: string): Promise<boolean> => {
+
+  // Every folder under image/ that DIRECTLY holds at least one of the files we
+  // write, as a lowercased relative path of one or two segments. Two levels is
+  // all the tree ever uses: `image/<product>/` for an installed expansion,
+  // `image/<vendor>/<product>/` for a plugin or a user sample pack.
+  const directArt = new Set<string>();
+  const scan = async (rel: string, depth: number): Promise<void> => {
     let entries;
     try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
+      entries = await fs.readdir(rel ? `${imageDir}/${rel}` : imageDir, {
+        withFileTypes: true,
+      });
     } catch {
-      return false;
+      return;
     }
-    if (entries.some((e) => e.isFile() && artFiles.has(e.name.toLowerCase()))) {
-      return true;
+    if (rel && entries.some((e) => e.isFile() && artFiles.has(e.name.toLowerCase()))) {
+      directArt.add(rel.toLowerCase());
     }
-    for (const e of entries) {
-      if (!e.isDirectory() || e.name.startsWith(".")) continue;
-      if (await hasArt(`${dir}/${e.name}`)) return true;
-    }
+    if (depth >= 2) return;
+    await Promise.all(
+      entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+        .map((e) => scan(rel ? `${rel}/${e.name}` : e.name, depth + 1)),
+    );
+  };
+  await scan("", 0);
+
+  /** Art directly here, or in any folder beneath - a plugin vendor's case. */
+  const anyArt = (folder: string) => {
+    if (directArt.has(folder)) return true;
+    const prefix = `${folder}/`;
+    for (const p of directArt) if (p.startsWith(prefix)) return true;
     return false;
   };
-
-  let folders: Set<string>;
-  try {
-    const entries = (await fs.readdir(imageDir, { withFileTypes: true })).filter(
-      (e) => e.isDirectory() && !e.name.startsWith("."),
-    );
-    const filled = await Promise.all(
-      entries.map(async (e) => ((await hasArt(`${imageDir}/${e.name}`)) ? e.name.toLowerCase() : null)),
-    );
-    folders = new Set(filled.filter((n): n is string => n !== null));
-  } catch {
-    folders = new Set();
-  }
 
   let cleanup: (() => Promise<void>) | null = null;
   try {
@@ -144,6 +168,39 @@ export async function scanKits(): Promise<KitScan> {
         byChain.set(id, counts);
       }
 
+      // Which chains still have audio on disk. Maschine does not clean up
+      // k_bank_chain when a user library is removed, so hundreds of chains can
+      // outlive their content - one machine had ~700 for deleted sample packs.
+      // Offering artwork for those is offering to paint a wall that is gone.
+      const livePaths = new Map<string, boolean>();
+      const chainLive = new Map<number, boolean>();
+      const chainInstalled = new Map<number, boolean>();
+      const pathRows = tryAll(
+        opened.db,
+        `SELECT DISTINCT s.bank_chain_id AS id, p.path AS path
+         FROM k_sound_info s JOIN k_content_path p ON p.id = s.content_path_id`,
+      );
+      // No path information at all - an older schema, or a query that failed.
+      // Then we know nothing about what is on disk, and must not accuse every
+      // kit of being gone.
+      const pathsKnown = pathRows.length > 0;
+      for (const r of pathRows) {
+        const id = Number(r.id);
+        const p = str(r.path);
+        if (!p) continue;
+        let live = livePaths.get(p);
+        if (live === undefined) {
+          live = existsSync(p);
+          livePaths.set(p, live);
+        }
+        // A chain is live if ANY of its content folders is still there.
+        if (live || !chainLive.has(id)) chainLive.set(id, live || chainLive.get(id) === true);
+        // Installed libraries live in the shared or system trees; anything
+        // else is content the user added themselves, which is laid out
+        // differently in image/.
+        if (INSTALLED_ROOTS.some((r) => p.startsWith(r))) chainInstalled.set(id, true);
+      }
+
       const total = (c: ContentCounts) =>
         Object.values(c).reduce((a, b) => a + b, 0);
 
@@ -165,11 +222,27 @@ export async function scanKits(): Promise<KitScan> {
         const sounds = total(counts);
         if (sounds === 0) continue;
 
-        // Vendor first: that is what Maschine matches on when one is set.
+        const chainId = Number(r.id);
+        const installed = chainInstalled.get(chainId) === true;
         const vendorFolder = vendor ? folderName(vendor) : null;
         const nameFolder = folderName(name);
-        const folder = vendorFolder ?? nameFolder;
-        const altFolder = vendorFolder && vendorFolder !== nameFolder ? nameFolder : null;
+
+        // An installed expansion sits flat under its product name - that is
+        // Bumpin Flava, confirmed working, whose vendor is "Native
+        // Instruments" with no image/native instruments/ anywhere. A pack the
+        // user added nests under its vendor, which is the layout the original
+        // app produced: image/moose life/ALL BREAKS/, .../VOCALS/ and so on.
+        const nestUnder = !installed && vendorFolder ? vendorFolder : null;
+        const nested = nestUnder ? `${nestUnder}/${nameFolder}` : null;
+        const folder = nested ?? nameFolder;
+        const altFolder =
+          nested
+            ? nameFolder
+            : vendorFolder && vendorFolder !== nameFolder
+              ? vendorFolder
+              : null;
+
+        const live = !pathsKnown || chainLive.get(chainId) === true;
 
         const existing = byFolder.get(folder);
         if (existing) {
@@ -179,16 +252,19 @@ export async function scanKits(): Promise<KitScan> {
           }
           existing.groups = groupsPresent(existing.counts);
           if (!existing.vendor && vendor) existing.vendor = vendor;
+          // One live chain is enough to make the kit real.
+          if (live) existing.contentMissing = false;
           continue;
         }
 
-        const matchedBy = folders.has(folder)
-          ? vendorFolder
-            ? ("vendor" as const)
-            : ("name" as const)
-          : altFolder && folders.has(altFolder)
-            ? ("name" as const)
-            : null;
+        const matchedBy =
+          nested && directArt.has(nested)
+            ? ("nested" as const)
+            : anyArt(nameFolder)
+              ? ("name" as const)
+              : vendorFolder && anyArt(vendorFolder)
+                ? ("vendor" as const)
+                : null;
 
         byFolder.set(folder, {
           name,
@@ -199,13 +275,18 @@ export async function scanKits(): Promise<KitScan> {
           altFolder,
           hasArtwork: matchedBy !== null,
           matchedBy,
+          nestUnder,
+          contentMissing: !live,
           counts,
           groups: groupsPresent(counts),
         });
       }
 
       const kits = [...byFolder.values()].sort(
-        (a, b) => Number(a.hasArtwork) - Number(b.hasArtwork) || b.sounds - a.sounds,
+        (a, b) =>
+          Number(a.contentMissing) - Number(b.contentMissing) ||
+          Number(a.hasArtwork) - Number(b.hasArtwork) ||
+          b.sounds - a.sounds,
       );
 
       return { kits, imageDir, dbPath };

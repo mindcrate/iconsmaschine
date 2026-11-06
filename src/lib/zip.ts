@@ -8,6 +8,8 @@ export interface ZipInput {
   product: string;
   files: RenderedFile[];
   distDb: DistDbInput | null;
+  /** Nest image/ under this vendor without a dist_database entry. */
+  imageVendor?: string | null;
 }
 
 interface Entry {
@@ -97,9 +99,13 @@ function buildZip(entries: Entry[]): Buffer {
  */
 export function zipPack(input: ZipInput): Buffer {
   const productFolder = folderName(input.product);
-  // Plugins nest in image/ the same way they do in dist_database.
-  const imageRel = input.distDb
-    ? path.join("image", folderName(input.distDb.vendor), productFolder)
+  // Plugins nest in image/ the same way they do in dist_database, and a user
+  // sample pack nests under its vendor with no entry at all. The zip has to
+  // carry the same shape, or unzipping it over NI Resources puts the artwork
+  // where nothing looks for it.
+  const nestVendor = input.distDb?.vendor ?? input.imageVendor ?? null;
+  const imageRel = nestVendor
+    ? path.join("image", folderName(nestVendor), productFolder)
     : path.join("image", productFolder);
   const entries: Entry[] = [];
 

@@ -34,6 +34,10 @@ export default function Page() {
   const [name, setName] = useState("");
   const [author, setAuthor] = useState("");
   const [share, setShare] = useState(false);
+  // Nest image/ under the vendor. True for a sample pack the user added, which
+  // is laid out image/<vendor>/<product>/; false for an installed expansion,
+  // which sits flat. Set from the kit picker, overridable here.
+  const [nestImage, setNestImage] = useState(false);
   const [tags, setTags] = useState("");
   const [nks2, setNks2] = useState(true);
   const [background, setBackground] = useState("#101010");
@@ -160,6 +164,7 @@ export default function Page() {
       form.set("name", name);
       form.set("author", author);
       form.set("share", String(share));
+      form.set("nestImage", String(nestImage));
       form.set("tags", tags);
       form.set("nks2", String(nks2));
       form.set("background", transparent ? "" : background);
@@ -193,6 +198,7 @@ export default function Page() {
       form.set("name", name);
       form.set("author", author);
       form.set("share", String(share));
+      form.set("nestImage", String(nestImage));
       form.set("tags", tags);
       form.set("crops", JSON.stringify(crops));
       form.set("nks2", String(nks2));
@@ -233,6 +239,7 @@ export default function Page() {
     setName(pack.name);
     setAuthor(pack.author);
     setShare(pack.share);
+    setNestImage(Boolean(pack.nestImage));
     setTags(pack.tags.join(", "));
     setNks2(pack.nks2);
     setTransparent(pack.background === null);
@@ -349,8 +356,12 @@ export default function Page() {
           <p className="hint">
             Names must match <strong>exactly</strong> what Maschine shows. Folders
             on disk are lowercased, the way NI stores them; the name you type here
-            is what goes inside the .meta and JSON files. Plugins nest under the
-            vendor in both trees; expansions sit flat.
+            is what goes inside the .meta and JSON files. Where it lands depends
+            on the kind of content: a plugin nests under its vendor in both
+            trees, an installed expansion sits flat at{" "}
+            <code>image/&lt;product&gt;/</code>, and a sample pack you added
+            yourself nests at <code>image/&lt;vendor&gt;/&lt;product&gt;/</code>.
+            Picking a kit below sets this for you.
           </p>
 
           {!kitInfo.usesDistDb && (
@@ -358,11 +369,18 @@ export default function Page() {
               current={product}
               reloadToken={kitsToken}
               onPick={(k) => {
-                // The install folder is k.folder - the vendor when the kit has
-                // one, otherwise the bank chain name. Using the display name
-                // here would write to the wrong place for any kit with a
-                // vendor, which is most sample packs.
-                setProduct(k.vendor || k.name);
+                // The product is the kit's own name, always. Where its artwork
+                // goes depends on k.nestUnder: a pack the user added nests at
+                // image/<vendor>/<product>/, an installed expansion sits flat
+                // at image/<product>/.
+                //
+                // This used to set the product to the VENDOR for any kit that
+                // had one, which wrote image/moose life/ - a folder that on a
+                // real system holds nothing but per-product subfolders. The
+                // artwork landed one level above where Maschine looks.
+                setProduct(k.name);
+                setVendor(k.nestUnder ? k.vendor : "");
+                setNestImage(Boolean(k.nestUnder));
                 setName(k.name);
                 resetOutputs();
               }}
@@ -370,10 +388,15 @@ export default function Page() {
           )}
 
           <div className="row">
-            {kitInfo.usesDistDb && (
+            {(kitInfo.usesDistDb || nestImage) && (
               <div className="field">
                 <label>
-                  Vendor<span className="sub">required for plugins</span>
+                  Vendor
+                  <span className="sub">
+                    {kitInfo.usesDistDb
+                      ? "required for plugins"
+                      : "artwork nests under this"}
+                  </span>
                 </label>
                 <input
                   type="text"
@@ -390,6 +413,19 @@ export default function Page() {
                     <option key={v} value={v} />
                   ))}
                 </datalist>
+                {!kitInfo.usesDistDb && (
+                  <label className="inline-check">
+                    <input
+                      type="checkbox"
+                      checked={nestImage}
+                      onChange={(e) => {
+                        setNestImage(e.target.checked);
+                        resetOutputs();
+                      }}
+                    />
+                    Nest under the vendor
+                  </label>
+                )}
                 {vendorError && (
                   <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 5 }}>
                     {vendorError}

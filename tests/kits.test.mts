@@ -19,11 +19,18 @@ async function setup(t: { after: (fn: () => unknown) => void }) {
   for (const f of ["arcane attic", "astral flutter", "amplified funk", "xfer records"]) {
     await artFolder(image, f);
   }
+  // Content folders, so a kit can be seen to be live or gone.
+  const live = path.join(base, "content", "live-pack");
+  const dead = path.join(base, "content", "deleted-pack");
+  await fs.mkdir(live, { recursive: true });
+  await fs.mkdir(dead, { recursive: true });
+
   const dbFile = path.join(base, "komplete.db3");
   const db = new DatabaseSync(dbFile);
   db.exec(`
     CREATE TABLE k_bank_chain (id INTEGER, bcvendor TEXT, entry1 TEXT, entry2 TEXT, entry3 TEXT);
-    CREATE TABLE k_sound_info (id INTEGER, bank_chain_id INTEGER, device_type_flags INTEGER, file_ext TEXT);
+    CREATE TABLE k_sound_info (id INTEGER, bank_chain_id INTEGER, device_type_flags INTEGER, file_ext TEXT, content_path_id INTEGER);
+    CREATE TABLE k_content_path (id INTEGER, path TEXT);
     INSERT INTO k_bank_chain VALUES
       (1,'','Arcane Attic','Kits',NULL),
       (2,'','Bumpin Flava',NULL,NULL),
@@ -32,17 +39,22 @@ async function setup(t: { after: (fn: () => unknown) => void }) {
       (5,'Other','MASCHINE KITS',NULL,NULL),
       (6,'','/Volumes/External/thing.mxgrp',NULL,NULL),
       (7,'','Empty Chain',NULL,NULL),
-      (8,'MOOSE LIFE','ALL HIHATS PERCUSSION',NULL,NULL);
+      (8,'MOOSE LIFE','ALL HIHATS PERCUSSION',NULL,NULL),
+      (9,'','Deleted Pack',NULL,NULL);
+    -- Path 1 is a folder that exists; path 2 is one we delete in a test, the
+    -- shape Maschine leaves behind when a user library is removed.
+    INSERT INTO k_content_path VALUES (1,'@LIVE@'),(2,'@DEAD@');
     -- flags: 0+mxgrp Group, 4 one-shot, 8 loop, 1 instrument
     INSERT INTO k_sound_info VALUES
-      (1,1,0,'mxgrp'),(2,1,0,'mxgrp'),
-      (3,2,0,'mxgrp'),(4,2,4,'wav'),(5,2,8,'wav'),
-      (6,3,4,'wav'),
-      (7,4,1,'nksf'),
-      (8,5,4,'wav'),(9,5,8,'wav'),
-      (10,6,4,'wav'),
-      (11,8,4,'wav'),(12,8,4,'wav');
-  `);
+      (1,1,0,'mxgrp',1),(2,1,0,'mxgrp',1),
+      (3,2,0,'mxgrp',1),(4,2,4,'wav',1),(5,2,8,'wav',1),
+      (6,3,4,'wav',1),
+      (7,4,1,'nksf',1),
+      (8,5,4,'wav',1),(9,5,8,'wav',1),
+      (10,6,4,'wav',1),
+      (11,8,4,'wav',1),(12,8,4,'wav',1),
+      (13,9,4,'wav',2);
+  `.replaceAll("@LIVE@", live).replaceAll("@DEAD@", dead));
   db.close();
 
   process.env.NI_RESOURCES_IMAGE_DIR = image;
@@ -52,7 +64,7 @@ async function setup(t: { after: (fn: () => unknown) => void }) {
     delete process.env.MASCHINE_DB_PATH;
     await fs.rm(base, { recursive: true, force: true });
   });
-  return { image, dbFile };
+  return { image, dbFile, base, live, dead };
 }
 
 test("kits with no image folder are flagged, and listed first", async (t) => {
@@ -160,17 +172,19 @@ test("Groups, Samples, Instruments and Effects are classified apart", async (t) 
   assert.deepEqual(mk.groups, ["samples"], "wav content is samples");
 });
 
-test("a kit with a vendor installs to the vendor folder, not the bank name", async (t) => {
-  // Measured on a real system: where the two differ, vendor matched an image
-  // folder 1,031 times against the bank chain's 105. image/moose life/ exists;
-  // image/all hihats percussion/ does not.
+test("a user pack with a vendor nests under it, product folder and all", async (t) => {
+  // The layout read off a real system: image/moose life/ holds no files of its
+  // own, only ALL BREAKS/, VOCALS/, VOODOO/ and a dozen more siblings, each
+  // with its own artwork and .meta. Earlier this returned "moose life" alone,
+  // which is a folder of folders - nothing Maschine would draw.
   await setup(t);
   const { scanKits } = await import("../src/lib/kits.ts");
   const { kits } = await scanKits();
 
   const hihats = kits.find((k) => k.name === "ALL HIHATS PERCUSSION")!;
-  assert.equal(hihats.folder, "moose life", "vendor wins when one is set");
-  assert.equal(hihats.altFolder, "all hihats percussion", "the name is kept as the alternative");
+  assert.equal(hihats.folder, "moose life/all hihats percussion");
+  assert.equal(hihats.nestUnder, "moose life");
+  assert.equal(hihats.altFolder, "all hihats percussion", "flat stays a candidate");
 });
 
 test("a kit with no vendor still uses its bank chain name", async (t) => {
@@ -257,5 +271,57 @@ test("artwork nested a level down still counts, as a plugin's is", async (t) => 
 
   const serum = kits.find((k) => k.name === "Serum")!;
   assert.equal(serum.hasArtwork, true);
-  assert.equal(serum.matchedBy, "vendor");
+  assert.equal(serum.matchedBy, "nested");
+});
+
+test("a kit whose audio folder is gone is flagged, not offered", async (t) => {
+  const { image, base } = await setup(t);
+  await artFolder(image, "moose life");
+
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+
+  // setup() points content_path at a folder it does create, so a kit whose
+  // path exists reads as live...
+  const live = kits.find((k) => k.name === "Arcane Attic")!;
+  assert.equal(live.contentMissing, false);
+
+  // ...and one pointed at a folder that was deleted reads as missing. This is
+  // the ~700-dead-chain case: Maschine keeps k_bank_chain after a user library
+  // is removed, so the rows outlive the audio.
+  await fs.rm(path.join(base, "content", "deleted-pack"), {
+    recursive: true,
+    force: true,
+  });
+  const after = await scanKits();
+  const dead = after.kits.find((k) => k.name === "Deleted Pack")!;
+  assert.equal(dead.contentMissing, true);
+  assert.equal(
+    after.kits.indexOf(dead) > after.kits.indexOf(after.kits.find((k) => k.name === "Arcane Attic")!),
+    true,
+    "dead kits sort last",
+  );
+});
+
+test("an installed library stays flat, however its vendor reads", async (t) => {
+  const { image, base } = await setup(t);
+  // Bumpin Flava is the confirmed-working case: vendor "Native Instruments",
+  // no image/native instruments/ anywhere on the machine, artwork at
+  // image/bumpin flava/. Content under /Users/Shared is the signal.
+  const db = new DatabaseSync(path.join(base, "komplete.db3"));
+  db.exec(`
+    INSERT INTO k_content_path VALUES (3,'/Users/Shared/NI Resources/content/x');
+    INSERT INTO k_bank_chain VALUES (10,'Native Instruments','Shared Pack',NULL,NULL);
+    INSERT INTO k_sound_info VALUES (14,10,4,'wav',3);
+  `);
+  db.close();
+  await artFolder(image, "shared pack");
+
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+
+  const pack = kits.find((k) => k.name === "Shared Pack")!;
+  assert.equal(pack.nestUnder, null, "installed content does not nest");
+  assert.equal(pack.folder, "shared pack");
+  assert.equal(pack.matchedBy, "name");
 });

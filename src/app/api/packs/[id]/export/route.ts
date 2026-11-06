@@ -15,6 +15,7 @@ export async function GET(_request: Request, { params }: Ctx) {
       product: pack.product,
       files,
       distDb: distDbInputFor(pack),
+      imageVendor: pack.nestImage && pack.vendor ? pack.vendor : null,
     });
 
     return new Response(new Uint8Array(zip), {

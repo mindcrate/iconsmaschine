@@ -32,6 +32,19 @@ export interface Pack {
   share: boolean;
   /** Your own labels for finding packs in this app. Not Maschine metadata. */
   tags: string[];
+  /**
+   * Nest the image folder under the vendor: `image/<vendor>/<product>/`.
+   *
+   * This is the layout a sample pack the user added themselves uses. Read off
+   * a real system, `image/moose life/` holds no files of its own - it holds
+   * `ALL BREAKS/`, `VOCALS/`, `VOODOO/` and a dozen siblings, each with its
+   * own set and `.meta`. An installed expansion is the opposite: Bumpin Flava
+   * has vendor "Native Instruments" and sits flat at `image/bumpin flava/`
+   * with no `image/native instruments/` anywhere.
+   *
+   * Plugins nest regardless, via their dist_database entry.
+   */
+  nestImage: boolean;
   /** Hand-adjusted crops, keyed by output filename. */
   crops: CropMap;
   /**
@@ -53,6 +66,8 @@ export function needsDistDb(pack: Pick<Pack, "kitType">): boolean {
 export interface InstalledIdentity {
   vendor: string;
   product: string;
+  /** Whether image/ was nested under the vendor. */
+  nested?: boolean;
   /** Whether a dist_database entry was written too. */
   distDb: boolean;
 }

@@ -38,11 +38,26 @@ export interface InstallInput {
   /** Supply to also write a dist_database entry (plugins only). */
   distDb: DistDbInput | null;
   /**
+   * Nest the image folder under this vendor without writing a dist_database
+   * entry: `image/<imageVendor>/<product>/`. This is the layout user sample
+   * packs use. Measured on a real system, `image/moose life/` holds nothing
+   * itself - it holds `ALL BREAKS/`, `VOCALS/`, `VOODOO/` and a dozen more,
+   * each with its own files and `.meta`. Ignored when `distDb` is set, which
+   * already nests.
+   */
+  imageVendor?: string | null;
+  /**
    * Where this pack was last installed, when that differs from where it would
    * go now. Renaming moves the install path, and without this the previous
    * folders would be left behind with nothing pointing at them.
    */
-  previous?: { vendor: string; product: string; distDb: boolean } | null;
+  previous?: {
+    vendor: string;
+    product: string;
+    distDb: boolean;
+    /** Whether image/ was nested under the vendor. Defaults to `distDb`. */
+    nested?: boolean;
+  } | null;
 }
 
 async function statOrNull(p: string) {
@@ -61,16 +76,21 @@ async function statOrNull(p: string) {
  *
  *   image/futureaudioworkshop/sublab/   plugin  -> nested, mirrors dist_database
  *   image/amplified funk/               expansion -> flat, product only
+ *   image/moose life/ALL BREAKS/        user sample pack -> nested, no dist_db
  *
- * So a plugin's image folder mirrors its dist_database path, while expansions
- * and Kontakt libraries sit flat at the top level.
+ * So a plugin's image folder mirrors its dist_database path, an installed
+ * expansion or Kontakt library sits flat at the top level, and a user sample
+ * pack nests under its vendor with no dist_database entry at all. The third
+ * case is `imageVendor`.
  */
 function buildFileSet(input: InstallInput) {
   const productFolder = folderName(input.product);
 
   // A dist_database entry means a plugin, and plugins nest in image/ as well.
-  const imageSegments = input.distDb
-    ? [folderName(input.distDb.vendor), productFolder]
+  // A user sample pack nests too, under `imageVendor`, with no entry.
+  const nestVendor = input.distDb?.vendor ?? input.imageVendor ?? null;
+  const imageSegments = nestVendor
+    ? [folderName(nestVendor), productFolder]
     : [productFolder];
 
   const imageFiles = [
@@ -177,7 +197,9 @@ async function findStaleDirs(input: InstallInput): Promise<string[]> {
   const sameProduct =
     folderName(prev.product) === folderName(input.product);
   const sameVendor = folderName(prev.vendor) === folderName(input.vendor);
-  const sameShape = prev.distDb === Boolean(input.distDb);
+  const prevNested = prev.nested ?? prev.distDb;
+  const nowNested = Boolean(input.distDb || input.imageVendor);
+  const sameShape = prev.distDb === Boolean(input.distDb) && prevNested === nowNested;
   if (sameProduct && sameVendor && sameShape) return [];
 
   const imageRoot = niImageDir();
@@ -188,7 +210,7 @@ async function findStaleDirs(input: InstallInput): Promise<string[]> {
   const candidates: string[] = [];
   try {
     candidates.push(
-      prev.distDb
+      prevNested
         ? safeJoin(imageRoot, oldVendor, oldProduct)
         : safeJoin(imageRoot, oldProduct),
     );

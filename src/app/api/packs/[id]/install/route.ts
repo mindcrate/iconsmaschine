@@ -25,6 +25,9 @@ export async function POST(request: Request, { params }: Ctx) {
       vendor: pack.vendor,
       files,
       distDb: distDbInputFor(pack),
+      // A user sample pack nests under its vendor without a dist_database
+      // entry. Plugins already nest through theirs.
+      imageVendor: pack.nestImage && pack.vendor ? pack.vendor : null,
       previous: pack.installedAs,
     };
 
@@ -47,6 +50,7 @@ export async function POST(request: Request, { params }: Ctx) {
         vendor: pack.vendor,
         product: pack.product,
         distDb: needsDistDb(pack),
+        nested: needsDistDb(pack) || Boolean(pack.nestImage && pack.vendor),
       },
     });
 
@@ -66,6 +70,7 @@ export async function DELETE(_request: Request, { params }: Ctx) {
       vendor: pack.vendor,
       files,
       distDb: distDbInputFor(pack),
+      imageVendor: pack.nestImage && pack.vendor ? pack.vendor : null,
     });
     await savePack({ ...pack, installedAs: null });
     return Response.json({ result });

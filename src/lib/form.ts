@@ -120,6 +120,7 @@ export function readPackFields(
     bgColor: bgColor.replace(/^#/, "").toLowerCase(),
     author: str(form, "author").trim(),
     share: bool(form, "share"),
+    nestImage: bool(form, "nestImage"),
     tags,
     crops,
   };
