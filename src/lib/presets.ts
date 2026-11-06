@@ -56,14 +56,13 @@ export interface PresetEntry {
   error?: string;
 }
 
-export async function listPresets(): Promise<{
-  root: string;
-  rootExists: boolean;
-  presets: PresetEntry[];
-}> {
-  const root = userContentDir();
-  const presets: PresetEntry[] = [];
-
+/**
+ * Absolute paths of the preset files under a directory, to the same depth and
+ * with the same dot-file skip everywhere. Regular files only, so a symlinked
+ * preset cannot point a later write outside User Content.
+ */
+export async function presetFilesUnder(absDir: string): Promise<string[]> {
+  const found: string[] = [];
   const walk = async (dir: string, depth: number): Promise<void> => {
     if (depth > 6) return;
     let entries: import("node:fs").Dirent[];
@@ -77,10 +76,35 @@ export async function listPresets(): Promise<{
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         await walk(full, depth + 1);
-        continue;
+      } else if (
+        entry.isFile() &&
+        PRESET_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
+      ) {
+        found.push(full);
       }
-      if (!PRESET_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
+    }
+  };
+  await walk(absDir, 0);
+  return found;
+}
 
+export async function listPresets(): Promise<{
+  root: string;
+  rootExists: boolean;
+  presets: PresetEntry[];
+}> {
+  const root = userContentDir();
+  const presets: PresetEntry[] = [];
+
+  let rootExists = true;
+  try {
+    await fs.access(root);
+  } catch {
+    rootExists = false;
+  }
+
+  if (rootExists) {
+    for (const full of await presetFilesUnder(root)) {
       const relPath = path.relative(root, full);
       try {
         const buf = await fs.readFile(full);
@@ -98,7 +122,7 @@ export async function listPresets(): Promise<{
       } catch (err) {
         presets.push({
           relPath,
-          name: path.basename(entry.name, path.extname(entry.name)),
+          name: path.basename(full, path.extname(full)),
           vendor: "",
           bankchain: [],
           types: [],
@@ -109,15 +133,7 @@ export async function listPresets(): Promise<{
         });
       }
     }
-  };
-
-  let rootExists = true;
-  try {
-    await fs.access(root);
-  } catch {
-    rootExists = false;
   }
-  if (rootExists) await walk(root, 0);
 
   presets.sort((a, b) => a.relPath.localeCompare(b.relPath));
   return { root, rootExists, presets };
