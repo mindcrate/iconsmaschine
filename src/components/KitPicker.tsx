@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getJson } from "@/lib/client";
 import {
   describeCounts,
@@ -35,24 +35,45 @@ interface KitScan {
 export function KitPicker({
   onPick,
   current,
+  reloadToken,
 }: {
   onPick: (kit: Kit) => void;
   current: string;
+  /** Bump this to re-read the database, e.g. after an install. */
+  reloadToken?: number;
 }) {
   const [scan, setScan] = useState<KitScan | null>(null);
+  const [readAt, setReadAt] = useState<Date | null>(null);
   const [filter, setFilter] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [group, setGroup] = useState<ContentGroup | "all">("all");
   const [busy, setBusy] = useState(true);
 
-  useEffect(() => {
-    getJson<KitScan>("/api/kits")
-      .then(setScan)
-      .catch(() => setScan({ kits: [], imageDir: "", dbPath: null, note: "Could not read your kits." }))
-      .finally(() => setBusy(false));
+  const reload = useCallback(async () => {
+    setBusy(true);
+    try {
+      setScan(await getJson<KitScan>("/api/kits"));
+      setReadAt(new Date());
+    } catch {
+      setScan({
+        kits: [],
+        imageDir: "",
+        dbPath: null,
+        note: "Could not read your kits.",
+      });
+    } finally {
+      setBusy(false);
+    }
   }, []);
 
-  if (busy) {
+  // Re-reads on mount and whenever reloadToken changes - Maschine's database
+  // is live, so kits added or artwork installed since the page loaded would
+  // otherwise never appear.
+  useEffect(() => {
+    void reload();
+  }, [reload, reloadToken]);
+
+  if (busy && !scan) {
     return (
       <p className="hint">
         <span className="spinner" /> Reading your kits from Maschine…
@@ -61,8 +82,14 @@ export function KitPicker({
   }
   if (!scan || scan.kits.length === 0) {
     return (
-      <div className="note">
-        {scan?.note ?? "No kits found."} You can still type a name by hand below.
+      <div>
+        <div className="note">
+          {scan?.note ?? "No kits found."} You can still type a name by hand
+          below.
+        </div>
+        <button className="btn ghost small" onClick={reload} disabled={busy}>
+          {busy ? <><span className="spinner" /> Reading…</> : "Re-read from Maschine"}
+        </button>
       </div>
     );
   }
@@ -80,11 +107,28 @@ export function KitPicker({
 
   return (
     <div className="field">
-      <label>
-        Your kits
-        <span className="sub">
-          {missing.length} of {scan.kits.length} have no artwork
+      <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span>
+          Your kits
+          <span className="sub">
+            {missing.length} of {scan.kits.length} have no artwork
+          </span>
         </span>
+        <button
+          type="button"
+          className="btn ghost small"
+          style={{ marginLeft: "auto" }}
+          onClick={reload}
+          disabled={busy}
+          title="Read the kit list from Maschine again"
+        >
+          {busy ? <><span className="spinner" /> Reading…</> : "Refresh"}
+        </button>
+        {readAt && !busy && (
+          <span className="sub" style={{ marginLeft: 0, fontWeight: 400 }}>
+            read {readAt.toLocaleTimeString()}
+          </span>
+        )}
       </label>
 
       {available.length > 1 && (

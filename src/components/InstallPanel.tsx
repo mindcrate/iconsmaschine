@@ -9,7 +9,14 @@ interface UninstallResult {
   keptFolders: string[];
 }
 
-export function InstallPanel({ packId }: { packId: string }) {
+export function InstallPanel({
+  packId,
+  onChanged,
+}: {
+  packId: string;
+  /** Fired after NI Resources is written to, so other panels can re-read. */
+  onChanged?: () => void;
+}) {
   const [plan, setPlan] = useState<InstallPlan | null>(null);
   const [result, setResult] = useState<InstallResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -33,6 +40,7 @@ export function InstallPanel({ packId }: { packId: string }) {
       setRemoved(json.result as UninstallResult);
       setResult(null);
       setPlan(null);
+      onChanged?.();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -50,7 +58,10 @@ export function InstallPanel({ packId }: { packId: string }) {
         { dryRun, cleanStale },
       );
       setPlan(res.plan);
-      if (res.result) setResult(res.result);
+      if (res.result) {
+        setResult(res.result);
+        onChanged?.();
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {

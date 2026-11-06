@@ -48,6 +48,8 @@ export default function Page() {
   const [preview, setPreview] = useState<PreviewFile[] | null>(null);
   const [crops, setCrops] = useState<CropMap>({});
   const [editing, setEditing] = useState<PreviewFile | null>(null);
+  // Bumped when NI Resources changes, so the kit list re-reads.
+  const [kitsToken, setKitsToken] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -354,6 +356,7 @@ export default function Page() {
           {!kitInfo.usesDistDb && (
             <KitPicker
               current={product}
+              reloadToken={kitsToken}
               onPick={(k) => {
                 setProduct(k.name);
                 setName(k.name);
@@ -765,7 +768,10 @@ export default function Page() {
               onEdit={setEditing}
             />
             <div style={{ marginTop: 22 }}>
-              <InstallPanel packId={packId} />
+              <InstallPanel
+                packId={packId}
+                onChanged={() => setKitsToken((n) => n + 1)}
+              />
             </div>
           </section>
         )}
