@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { iconmaschineHome } from "./paths";
+import { TAG_FIELDS, type TagField } from "./tagfields";
 import { parseNksf, readSummary, type Summary } from "./nksf";
 import {
   OutsideUserContentError,
@@ -15,15 +16,7 @@ import {
  * as a rule so it can be applied again after a plugin re-save reverts it.
  */
 
-export const TAG_FIELDS = [
-  "vendor",
-  "bankchain",
-  "types",
-  "characters",
-  "author",
-  "comment",
-] as const;
-export type TagField = (typeof TAG_FIELDS)[number];
+export { TAG_FIELDS, type TagField };
 /** Only the picked keys are present. */
 export type TagFields = Pick<PresetEdit, TagField>;
 
