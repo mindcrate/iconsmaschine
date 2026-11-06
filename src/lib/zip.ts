@@ -112,9 +112,16 @@ export function zipPack(input: ZipInput): Buffer {
   for (const f of input.files) {
     entries.push({ name: path.join(imageRel, f.file), data: f.buffer });
   }
+  // Same .meta shape the installer writes: a nested user sample pack carries
+  // <vendor>, lowercase and matching its folder.
+  const nestedUserPack = !input.distDb && Boolean(input.imageVendor);
   entries.push({
     name: path.join(imageRel, `${productFolder}.meta`),
-    data: metaBuffer({ name: input.product, type: "image" }),
+    data: metaBuffer(
+      nestedUserPack
+        ? { name: productFolder, type: "image", vendor: folderName(input.imageVendor!) }
+        : { name: input.product, type: "image" },
+    ),
   });
 
   if (input.distDb) {

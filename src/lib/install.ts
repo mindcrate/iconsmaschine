@@ -93,11 +93,24 @@ function buildFileSet(input: InstallInput) {
     ? [folderName(nestVendor), productFolder]
     : [productFolder];
 
+  // A nested user sample pack's .meta carries <vendor>, and both values are
+  // lowercase matching the folder names. A flat expansion carries neither.
+  // Plugins are left exactly as they were, since their artwork is confirmed
+  // working and nothing here is worth risking on an untested change.
+  const nestedUserPack = !input.distDb && Boolean(input.imageVendor);
+  const imageMeta = nestedUserPack
+    ? {
+        name: productFolder,
+        type: "image" as const,
+        vendor: folderName(input.imageVendor!),
+      }
+    : { name: input.product, type: "image" as const };
+
   const imageFiles = [
     ...input.files.map((f) => ({ file: f.file, buffer: f.buffer })),
     {
       file: `${productFolder}.meta`,
-      buffer: metaBuffer({ name: input.product, type: "image" }),
+      buffer: metaBuffer(imageMeta),
     },
   ];
 

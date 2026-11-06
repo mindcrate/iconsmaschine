@@ -52,10 +52,19 @@ test("dist_database .meta reproduces a real third-party file exactly", () => {
   assert.equal(out, REAL_DISTDB_META);
 });
 
-test("image .meta carries no vendor, dist_database .meta requires one", () => {
-  const img = buildMeta({ name: "X", type: "image", vendor: "Ignored" });
-  assert.equal(img.includes("<vendor>"), false);
-  assert.ok(img.includes("<type>image</type>"));
+test("vendor is optional in an image .meta and required in a dist_database one", () => {
+  // Omitted for a flat installed expansion...
+  const flat = buildMeta({ name: "X", type: "image" });
+  assert.equal(flat.includes("<vendor>"), false);
+  assert.ok(flat.includes("<type>image</type>"));
+
+  // ...and present for a nested user sample pack, which is laid out
+  // image/<vendor>/<product>/ and names its parent folder in the file.
+  const nested = buildMeta({ name: "techno elements", type: "image", vendor: "bruce" });
+  assert.ok(nested.includes("<vendor>bruce</vendor>"));
+  assert.ok(nested.includes("<type>image</type>"));
+  // Vendor comes before name, as NI writes it.
+  assert.ok(nested.indexOf("<vendor>") < nested.indexOf("<name>"));
 
   assert.throws(
     () => buildMeta({ name: "X", type: "dist_database" }),

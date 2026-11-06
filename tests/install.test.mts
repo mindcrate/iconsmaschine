@@ -449,3 +449,48 @@ test("renaming out of a nested layout leaves the old folder flagged", async (t) 
     true,
   );
 });
+
+test("a nested pack's image .meta carries a lowercase vendor", async (t) => {
+  const { image } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+
+  await install({
+    product: "Techno Elements",
+    vendor: "Bruce",
+    files: [{ file: "MST_artwork.png", buffer: Buffer.from("a") }],
+    distDb: null,
+    imageVendor: "Bruce",
+  });
+
+  const meta = await fs.readFile(
+    path.join(image, "bruce", "techno elements", "techno elements.meta"),
+    "utf8",
+  );
+  // Both values lowercase and matching the folders, per the layout these
+  // packs are built to by hand.
+  assert.match(meta, /<vendor>bruce<\/vendor>/);
+  assert.match(meta, /<name>techno elements<\/name>/);
+  assert.match(meta, /<type>image<\/type>/);
+});
+
+test("a flat expansion's image .meta carries no vendor at all", async (t) => {
+  const { image } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+
+  // Bumpin Flava is the confirmed-working flat case: the display name, cased
+  // as NI writes it, and no <vendor> even though the content has one.
+  await install({
+    product: "Bumpin Flava",
+    vendor: "Native Instruments",
+    files: [{ file: "MST_artwork.png", buffer: Buffer.from("a") }],
+    distDb: null,
+    imageVendor: null,
+  });
+
+  const meta = await fs.readFile(
+    path.join(image, "bumpin flava", "bumpin flava.meta"),
+    "utf8",
+  );
+  assert.equal(meta.includes("<vendor>"), false);
+  assert.match(meta, /<name>Bumpin Flava<\/name>/);
+});
