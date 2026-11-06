@@ -123,6 +123,36 @@ for (const r of rows) {
   );
 }
 
+// The artwork tree can move with the app version too, so check that while we
+// are here rather than discovering it separately a day later.
+const imageRoots = [
+  "/Users/Shared/NI Resources/image",
+  "/Library/Application Support/Native Instruments/NI Resources/image",
+  path.join(os.homedir(), "Library/Application Support/Native Instruments/NI Resources/image"),
+  "/Users/Shared/NI Resources 2/image",
+];
+console.log("\nArtwork trees");
+console.log("-".repeat(70));
+let anyImage = false;
+for (const r of imageRoots) {
+  let entries;
+  try {
+    entries = fs.readdirSync(r, { withFileTypes: true }).filter((e) => e.isDirectory());
+  } catch {
+    continue;
+  }
+  anyImage = true;
+  let newest = 0;
+  for (const e of entries.slice(0, 2000)) {
+    try {
+      newest = Math.max(newest, fs.statSync(path.join(r, e.name)).mtimeMs);
+    } catch {}
+  }
+  console.log(`${r}`);
+  console.log(`   ${entries.length} folders, newest touched ${ago(newest)}`);
+}
+if (!anyImage) console.log("  none found in the usual places");
+
 const hits = rows.filter((r) => (r.hit ?? 0) > 0);
 if (needle && hits.length > 0) {
   console.log(`\nPoint the tools at the one that has it:\n`);
