@@ -95,26 +95,10 @@ for (const [ext, list] of [...found].sort()) {
 }
 
 console.log("\n===== How Maschine records user content =====");
-// The most recently written komplete.db3, not a fixed version's path: an
-// older install's file lingers and looks perfectly plausible.
-const niRoot = path.join(home, "Library/Application Support/Native Instruments");
-let db = process.env.MASCHINE_DB_PATH ?? "";
-if (!db) {
-  let newest = 0;
-  let apps = [];
-  try {
-    apps = fs.readdirSync(niRoot, { withFileTypes: true }).filter((e) => e.isDirectory());
-  } catch {}
-  for (const a of apps) {
-    const p = path.join(niRoot, a.name, "komplete.db3");
-    let when = 0;
-    for (const ext of ["", "-wal"]) {
-      try { when = Math.max(when, fs.statSync(p + ext).mtimeMs); }
-      catch { if (!ext) break; }
-    }
-    if (when > newest) { newest = when; db = p; }
-  }
-}
+// Maschine 3's database by name. Maschine 2's beside it is bigger and gets a
+// fresh write each time Maschine 2 is opened, so "newest" picks wrong.
+const m3Db = path.join(home, "Library/Application Support/Native Instruments/Maschine 3/komplete.db3");
+const db = process.env.MASCHINE_DB_PATH ?? (fs.existsSync(m3Db) ? m3Db : "");
 if (!db) {
   console.log("  komplete.db3 not found");
 } else {

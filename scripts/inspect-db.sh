@@ -15,9 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 
 const candidates = [
   process.env.MASCHINE_DB_PATH,
-  ...["Maschine 2", "Komplete Kontrol", "Kontakt 8", "Kontakt 7"].map((n) =>
-    path.join(os.homedir(), "Library", "Application Support", "Native Instruments", n, "komplete.db3"),
-  ),
+  path.join(os.homedir(), "Library", "Application Support", "Native Instruments", "Maschine 3", "komplete.db3"),
 ].filter(Boolean);
 
 const db = candidates.find((p) => p && fs.existsSync(p));

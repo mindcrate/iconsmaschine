@@ -69,7 +69,7 @@ test("a copied database carries its write-ahead log, not just the .db3", async (
   }
 });
 
-test("the live database wins over an older version's, whatever it is called", async (t) => {
+test("Maschine 3's database is read, even when Maschine 2's was written later", async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "im-find-"));
   t.after(() => {
     delete process.env.HOME;
@@ -84,26 +84,22 @@ test("the live database wins over an older version's, whatever it is called", as
   const m3 = path.join(ni, "Maschine 3");
   await fs.mkdir(m2, { recursive: true });
   await fs.mkdir(m3, { recursive: true });
-  // The older install's file is BIGGER and has more in it - size and name are
-  // exactly the signals that mislead here.
-  await fs.writeFile(path.join(m2, "komplete.db3"), "x".repeat(5000));
-  await fs.writeFile(path.join(m3, "komplete.db3"), "x".repeat(10));
-
-  const old = new Date(Date.now() - 86_400_000);
-  await fs.utimes(path.join(m2, "komplete.db3"), old, old);
-
   process.env.HOME = dir;
   const { findMaschineDb } = await import("../src/lib/maschinedb.ts");
-  assert.equal(findMaschineDb(), path.join(m3, "komplete.db3"));
+  assert.equal(findMaschineDb(), null);
 
-  // A write-ahead log counts as the database being written: recent changes sit
-  // there until a checkpoint, so a .db3 with a fresh -wal is the live one.
+  // Opening Maschine 2 for a quick test gives its bigger database a fresh
+  // write and a fresh -wal. That must not move the app off Maschine 3.
+  await fs.writeFile(path.join(m3, "komplete.db3"), "x".repeat(10));
   const older = new Date(Date.now() - 172_800_000);
   await fs.utimes(path.join(m3, "komplete.db3"), older, older);
+  await fs.writeFile(path.join(m2, "komplete.db3"), "x".repeat(5000));
   await fs.writeFile(path.join(m2, "komplete.db3-wal"), "w");
+  assert.equal(findMaschineDb(), path.join(m3, "komplete.db3"));
+
+  process.env.MASCHINE_DB_PATH = path.join(m2, "komplete.db3");
   assert.equal(findMaschineDb(), path.join(m2, "komplete.db3"));
 
-  // An explicit override still wins over everything.
-  process.env.MASCHINE_DB_PATH = path.join(m3, "komplete.db3");
-  assert.equal(findMaschineDb(), path.join(m3, "komplete.db3"));
+  process.env.MASCHINE_DB_PATH = path.join(dir, "nope", "komplete.db3");
+  assert.equal(findMaschineDb(), null);
 });

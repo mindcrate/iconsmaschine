@@ -69,8 +69,10 @@ not from `bcvendor`, which does not follow the Properties edit.
   machine has one - 1,086 with artwork, zero with an entry.
 - **Reading `Maschine 2/komplete.db3`.** It still exists, is larger, and has
   more bank chains than the live Maschine 3 one, so it looks like the right
-  file while being an abandoned install. Pick the most recently written
-  instead; `scripts/find-db.sh` lists them all.
+  file while being an abandoned install. Picking the most recently written
+  fails too: opening Maschine 2 for one test makes it the newest. The app and
+  scripts now read `Maschine 3/komplete.db3` by name; `scripts/find-db.sh`
+  still lists them all.
 - **Copying `komplete.db3` without its `-wal`.** SQLite holds recent writes
   in the sidecar until Maschine checkpoints on quit, so a copy of the `.db3`
   alone can be days stale while looking current.

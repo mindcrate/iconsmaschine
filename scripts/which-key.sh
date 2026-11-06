@@ -29,27 +29,17 @@ const imageDir = process.env.NI_RESOURCES_IMAGE_DIR ?? "/Users/Shared/NI Resourc
  */
 function liveMaschineDb() {
   if (process.env.MASCHINE_DB_PATH) return process.env.MASCHINE_DB_PATH;
+  // Maschine 3 by name. Maschine 2's database beside it is bigger and gets a
+  // fresh write each time Maschine 2 is opened, so "newest" picks wrong.
   const roots = [
     path.join(os.homedir(), "Library/Application Support/Native Instruments"),
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Native Instruments") : "",
   ].filter(Boolean);
-  let best = null;
   for (const r of roots) {
-    let apps;
-    try {
-      apps = fs.readdirSync(r, { withFileTypes: true }).filter((e) => e.isDirectory());
-    } catch { continue; }
-    for (const a of apps) {
-      const p = path.join(r, a.name, "komplete.db3");
-      let when = 0;
-      for (const ext of ["", "-wal"]) {
-        try { when = Math.max(when, fs.statSync(p + ext).mtimeMs); }
-        catch { if (!ext) break; }
-      }
-      if (when > 0 && (!best || when > best.when)) best = { p, when };
-    }
+    const p = path.join(r, "Maschine 3", "komplete.db3");
+    if (fs.existsSync(p)) return p;
   }
-  return best ? best.p : "";
+  return "";
 }
 const dbPath = liveMaschineDb();
 if (!fs.existsSync(dbPath)) { console.log("No komplete.db3 at " + dbPath); process.exit(0); }

@@ -22,22 +22,17 @@ export interface MaschineDb {
 }
 
 /**
- * The browser database Maschine is actually writing.
+ * Maschine 3's browser database. The app is built for Maschine 3 only.
  *
- * This used to try a fixed list with "Maschine 2" at the front and return the
- * first that existed. On a machine running Maschine 3 that is the wrong file:
- * both exist, the Maschine 2 one is bigger and has more bank chains, and it
- * stopped being written when Maschine 3 took over. Every reading taken from it
- * was a snapshot of an abandoned install, which is not a mistake that
- * announces itself - the data looks perfectly reasonable, just stale.
+ * Chosen by name on purpose. Maschine 2's database sits beside it, is bigger,
+ * and gets a fresh write each time Maschine 2 is opened, so "most recently
+ * written" reads the wrong file after any quick test in the old version.
  *
- * So pick by what is live rather than by name: enumerate the candidates and
- * take the most recently written, counting the -wal, since that is where
- * recent changes sit until a checkpoint. No version list to keep up to date.
+ * A MASCHINE_DB_PATH that points nowhere gives null, not a silent fallback.
  */
 export function findMaschineDb(): string | null {
   const override = process.env.MASCHINE_DB_PATH;
-  if (override && fs.existsSync(override)) return override;
+  if (override) return fs.existsSync(override) ? override : null;
 
   const roots = [
     path.join(os.homedir(), "Library", "Application Support", "Native Instruments"),
@@ -45,32 +40,11 @@ export function findMaschineDb(): string | null {
       ? path.join(process.env.LOCALAPPDATA, "Native Instruments")
       : "",
   ].filter(Boolean);
-
-  let best: { path: string; when: number } | null = null;
   for (const root of roots) {
-    let apps: string[];
-    try {
-      apps = fs
-        .readdirSync(root, { withFileTypes: true })
-        .filter((e) => e.isDirectory())
-        .map((e) => e.name);
-    } catch {
-      continue;
-    }
-    for (const app of apps) {
-      const p = path.join(root, app, "komplete.db3");
-      let when = 0;
-      for (const ext of ["", "-wal"]) {
-        try {
-          when = Math.max(when, fs.statSync(p + ext).mtimeMs);
-        } catch {
-          if (!ext) break; // no database here at all
-        }
-      }
-      if (when > 0 && (!best || when > best.when)) best = { path: p, when };
-    }
+    const p = path.join(root, "Maschine 3", "komplete.db3");
+    if (fs.existsSync(p)) return p;
   }
-  return best?.path ?? null;
+  return null;
 }
 
 export interface OpenedDb {
