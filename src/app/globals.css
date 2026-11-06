@@ -493,3 +493,10 @@ table.calib td.absent { color: var(--muted); }
   color: var(--muted); font-size: 12px; cursor: pointer;
 }
 .inline-check input { margin: 0; }
+
+/* A button that reads as a link, e.g. "it is under Samples" in the kit list. */
+.linkish {
+  background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+  color: var(--accent); text-decoration: underline;
+}
+.linkish:hover { color: var(--fg); }

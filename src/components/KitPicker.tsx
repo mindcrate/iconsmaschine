@@ -103,9 +103,24 @@ export function KitPicker({
     .filter((k) => (filter ? k.name.toLowerCase().includes(filter.toLowerCase()) : true));
 
   // Only offer a tab for a grouping that actually has kits behind it.
-  const available = (["groups", "samples", "instruments", "effects", "other"] as const).filter(
-    (g) => pool.some((k) => k.groups.includes(g)),
-  );
+  const GROUPS = ["groups", "samples", "instruments", "effects", "other"] as const;
+  const available = GROUPS.filter((g) => pool.some((k) => k.groups.includes(g)));
+
+  // When a search comes back empty, the kit is usually sitting under another
+  // tab - Voodoo is one-shots and loops, so looking for it under Groups &
+  // Sounds finds nothing. Say where it actually is instead of a dead end.
+  const byName = filter
+    ? scan.kits.filter((k) => k.name.toLowerCase().includes(filter.toLowerCase()))
+    : [];
+  const elsewhere =
+    shown.length === 0 && byName.length > 0
+      ? GROUPS.filter((g) => g !== group && byName.some((k) => k.groups.includes(g)))
+      : [];
+  // Or it is there, but hidden because it already has artwork.
+  const hiddenByFilter =
+    shown.length === 0 &&
+    !showAll &&
+    byName.some((k) => (group === "all" || k.groups.includes(group)) && !missing.includes(k));
 
   return (
     <div className="field">
@@ -211,7 +226,31 @@ export function KitPicker({
         ))}
         {shown.length === 0 && (
           <p className="hint" style={{ margin: 0 }}>
-            Nothing matches that filter.
+            {elsewhere.length > 0 ? (
+              <>
+                No match here, but &ldquo;{filter}&rdquo; is under{" "}
+                {elsewhere.map((g, i) => (
+                  <span key={g}>
+                    {i > 0 && (i === elsewhere.length - 1 ? " and " : ", ")}
+                    <button
+                      type="button"
+                      className="linkish"
+                      onClick={() => setGroup(g)}
+                    >
+                      {GROUP_LABELS[g]}
+                    </button>
+                  </span>
+                ))}
+                .
+              </>
+            ) : hiddenByFilter ? (
+              <>
+                &ldquo;{filter}&rdquo; is here but already has artwork. Tick{" "}
+                <em>Include kits that already have artwork</em> to see it.
+              </>
+            ) : (
+              "Nothing matches that filter."
+            )}
           </p>
         )}
       </div>
