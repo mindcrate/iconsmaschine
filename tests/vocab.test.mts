@@ -16,12 +16,23 @@ async function setup(
     const dbFile = path.join(base, "komplete.db3");
     const db = new DatabaseSync(dbFile);
     db.exec(`
-      CREATE TABLE k_bank_chain (id INTEGER, bcvendor TEXT);
-      CREATE TABLE k_sound_info (id INTEGER, vendor TEXT);
-      INSERT INTO k_bank_chain VALUES (1,'Chain Only Co'),(2,'Other'),(3,'');
+      CREATE TABLE k_bank_chain (id INTEGER, bcvendor TEXT, entry1 TEXT);
+      CREATE TABLE k_sound_info (id INTEGER, bank_chain_id INTEGER, device_type_flags INTEGER, file_ext TEXT, vendor TEXT);
+      INSERT INTO k_bank_chain VALUES
+        (1,'Chain Only Co','Chain Only Pack'),(2,'Other','Other Pack'),(3,'',NULL),
+        (4,'','Valhalla DSP, LLC'),(5,'Other','iZotope, Inc.'),
+        (6,'','Loose Sample Pack'),(7,'','Vendored Plugin Bank'),
+        (8,'','Reaktor'),(9,'','Reaktor');
+      -- flags: 1 instrument, 2 effect, 4 one-shot
       INSERT INTO k_sound_info VALUES
-        (1,'Native Instruments'),(2,'Native Instruments'),(3,'Native instruments'),
-        (4,'tim moose'),(5,'other'),(6,NULL),(7,'arturia'),(8,'Arturia'),(9,'Arturia');
+        (1,1,4,'wav','Native Instruments'),(2,1,4,'wav','Native Instruments'),(3,1,4,'wav','Native instruments'),
+        (4,1,4,'wav','tim moose'),(5,1,4,'wav','other'),(6,1,4,'wav',NULL),
+        (7,1,4,'wav','arturia'),(8,1,4,'wav','Arturia'),(9,1,4,'wav','Arturia'),
+        (10,4,2,'',NULL),(11,4,2,'',NULL),
+        (12,5,1,'','Other'),
+        (13,6,4,'wav',NULL),
+        (14,7,1,'nksf','Arturia'),
+        (15,8,1,'ens',NULL),(16,9,1,'ens','Native Instruments');
     `);
     db.close();
     process.env.MASCHINE_DB_PATH = dbFile;
@@ -57,6 +68,19 @@ test("vendors from both Maschine tables appear, and Other never does", async (t)
     vendors,
     [...vendors].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())),
   );
+});
+
+test("a plugin with no vendor adds its maker's bank name; a sample pack does not", async (t) => {
+  await setup(t, { db: true });
+  const { readVocabulary } = await import("../src/lib/vocab.ts");
+  const { vendors } = await readVocabulary();
+  assert.ok(vendors.includes("Valhalla DSP, LLC"));
+  assert.ok(vendors.includes("iZotope, Inc."));
+  assert.ok(!vendors.includes("Loose Sample Pack"));
+  assert.ok(!vendors.includes("Vendored Plugin Bank"));
+  assert.ok(!vendors.includes("Chain Only Pack"));
+  // A product heading with one vendor-less chain among vendored ones.
+  assert.ok(!vendors.includes("Reaktor"));
 });
 
 test("inside the database the commonest spelling wins a case clash", async (t) => {

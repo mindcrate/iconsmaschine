@@ -1,8 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { niDistDatabaseDir } from "./paths";
-import { findMaschineDb, openMaschineDb, str, tryAll } from "./maschinedb";
+import {
+  findMaschineDb,
+  openMaschineDb,
+  str,
+  tryAll,
+  type MaschineDb,
+} from "./maschinedb";
 import { effectiveVendor } from "./kits";
+import { classify } from "./contenttype";
 import { validateFolderName } from "./spec";
 import suggestionFile from "../data/vendor-suggestions.json" with { type: "json" };
 
@@ -110,6 +117,39 @@ export function mergeVendors(
   };
 }
 
+/**
+ * A plain AU/VST plugin has no vendor on its sounds or its bank chain, and
+ * Maschine groups it under the bank chain's first entry, which is the maker's
+ * own name ("Valhalla DSP, LLC", "iZotope, Inc."). Sample packs without a
+ * vendor use the same column for the pack's name, so only headings holding
+ * instruments or effects count. The heading is judged as a whole: "Kontakt"
+ * and "Reaktor" have a few vendor-less chains among many Native Instruments
+ * ones, and are products, not makers.
+ */
+function pluginMakerNames(db: MaschineDb): Map<string, number> {
+  const headings = new Map<string, { vendored: boolean; plugins: number }>();
+  for (const r of tryAll(
+    db,
+    `SELECT c.entry1 AS name, c.bcvendor AS bcv, s.vendor AS sv,
+            s.device_type_flags AS flags, s.file_ext AS ext, COUNT(*) AS n
+     FROM k_sound_info s JOIN k_bank_chain c ON c.id = s.bank_chain_id
+     GROUP BY c.entry1, c.bcvendor, s.vendor, s.device_type_flags, s.file_ext`,
+  )) {
+    const name = clean(str(r.name));
+    if (!name || name.startsWith("/")) continue;
+    const h = headings.get(name) ?? { vendored: false, plugins: 0 };
+    if (effectiveVendor(str(r.bcv)) || effectiveVendor(str(r.sv))) h.vendored = true;
+    const type = classify(Number(r.flags ?? 0), str(r.ext));
+    if (type === "instrument" || type === "effect") h.plugins += Number(r.n ?? 0);
+    headings.set(name, h);
+  }
+  const names = new Map<string, number>();
+  for (const [name, { vendored, plugins }] of headings) {
+    if (!vendored && plugins > 0) names.set(name, plugins);
+  }
+  return names;
+}
+
 /** Vendor names in Maschine's own database, commonest spelling first. */
 async function readDbVendors(): Promise<string[]> {
   const dbPath = findMaschineDb();
@@ -133,6 +173,9 @@ async function readDbVendors(): Promise<string[]> {
         "SELECT bcvendor AS v, COUNT(*) AS n FROM k_bank_chain WHERE bcvendor IS NOT NULL GROUP BY bcvendor",
         "v",
       );
+      for (const [name, n] of pluginMakerNames(opened.db)) {
+        counts.set(name, (counts.get(name) ?? 0) + n);
+      }
       return [...counts]
         .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
         .map(([name]) => name);
