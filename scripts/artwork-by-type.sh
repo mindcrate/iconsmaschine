@@ -7,6 +7,11 @@
 # group-bearing products do, then no folder name will ever work for samples -
 # and that is worth knowing before chasing it further.
 #
+# CAVEAT: this counts a folder as artwork merely because it exists, so its
+# tally is optimistic - an empty folder counts. scripts/why-samples.sh checks
+# for the actual files and reports which candidate folder matched; prefer it
+# when the question is why a particular product shows nothing.
+#
 # Reads only, from a copy of the database. Changes nothing.
 
 set -uo pipefail

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { findMaschineDb, openMaschineDb, str, tryAll } from "./maschinedb";
 import { niImageDir } from "./paths";
 import { folderName } from "./distdb";
+import { IMAGE_SPECS } from "./spec";
 import {
   classify,
   emptyCounts,
@@ -78,14 +79,38 @@ export async function scanKits(): Promise<KitScan> {
     };
   }
 
+  // An EMPTY folder is not artwork. Matching on the folder name alone counted
+  // one as done, so a kit resolving to a bare `image/<vendor>/` looked finished
+  // while Maschine had nothing to draw. A folder counts only if it holds at
+  // least one of the files we write - directly, or in a subfolder, since a
+  // plugin vendor's images sit one level down in `image/<vendor>/<product>/`.
+  const artFiles = new Set(IMAGE_SPECS.map((s) => s.file.toLowerCase()));
+  const hasArt = async (dir: string): Promise<boolean> => {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    if (entries.some((e) => e.isFile() && artFiles.has(e.name.toLowerCase()))) {
+      return true;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith(".")) continue;
+      if (await hasArt(`${dir}/${e.name}`)) return true;
+    }
+    return false;
+  };
+
   let folders: Set<string>;
   try {
-    const entries = await fs.readdir(imageDir, { withFileTypes: true });
-    folders = new Set(
-      entries
-        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
-        .map((e) => e.name.toLowerCase()),
+    const entries = (await fs.readdir(imageDir, { withFileTypes: true })).filter(
+      (e) => e.isDirectory() && !e.name.startsWith("."),
     );
+    const filled = await Promise.all(
+      entries.map(async (e) => ((await hasArt(`${imageDir}/${e.name}`)) ? e.name.toLowerCase() : null)),
+    );
+    folders = new Set(filled.filter((n): n is string => n !== null));
   } catch {
     folders = new Set();
   }

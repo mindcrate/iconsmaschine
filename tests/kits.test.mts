@@ -6,12 +6,18 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 /** Fixture mirroring the real schema and the real situation found on disk. */
+/** Create an image folder that actually holds artwork, as a real one does. */
+async function artFolder(image: string, name: string) {
+  await fs.mkdir(path.join(image, name), { recursive: true });
+  await fs.writeFile(path.join(image, name, "MST_artwork.png"), "png");
+}
+
 async function setup(t: { after: (fn: () => unknown) => void }) {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), "im-kits-"));
   const image = path.join(base, "image");
   // Expansions that DO have artwork.
   for (const f of ["arcane attic", "astral flutter", "amplified funk", "xfer records"]) {
-    await fs.mkdir(path.join(image, f), { recursive: true });
+    await artFolder(image, f);
   }
   const dbFile = path.join(base, "komplete.db3");
   const db = new DatabaseSync(dbFile);
@@ -180,7 +186,7 @@ test("a kit with no vendor still uses its bank chain name", async (t) => {
 test("artwork found under the alternative folder is still reported", async (t) => {
   const { image } = await setup(t);
   // A folder named after the bank chain rather than the vendor - the 105 case.
-  await fs.mkdir(path.join(image, "all hihats percussion"), { recursive: true });
+  await artFolder(image, "all hihats percussion");
 
   const { scanKits } = await import("../src/lib/kits.ts");
   const { kits } = await scanKits();
@@ -191,7 +197,7 @@ test("artwork found under the alternative folder is still reported", async (t) =
 
 test("matchedBy says which key the folder was found under", async (t) => {
   const { image } = await setup(t);
-  await fs.mkdir(path.join(image, "moose life"), { recursive: true });
+  await artFolder(image, "moose life");
 
   const { scanKits } = await import("../src/lib/kits.ts");
   const { kits } = await scanKits();
@@ -201,7 +207,7 @@ test("matchedBy says which key the folder was found under", async (t) => {
 
 test("a kit sharing a vendor's artwork is distinguishable from one with its own", async (t) => {
   const { image } = await setup(t);
-  await fs.mkdir(path.join(image, "moose life"), { recursive: true });
+  await artFolder(image, "moose life");
 
   const { scanKits } = await import("../src/lib/kits.ts");
   const { kits } = await scanKits();
@@ -222,4 +228,34 @@ test("a kit sharing a vendor's artwork is distinguishable from one with its own"
   const arcane = kits.find((k) => k.name === "Arcane Attic")!;
   assert.equal(arcane.matchedBy, "name");
   assert.equal(arcane.vendor, "");
+});
+
+test("an empty image folder is not artwork", async (t) => {
+  const { image } = await setup(t);
+  // A bare folder, as my app leaves behind on a rename, or as the user creates
+  // by hand. Maschine has nothing to draw from it, so neither should we claim
+  // the kit is done - this is what made Voodoo look finished.
+  await fs.mkdir(path.join(image, "moose life"), { recursive: true });
+
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+
+  const hihats = kits.find((k) => k.name === "ALL HIHATS PERCUSSION")!;
+  assert.equal(hihats.hasArtwork, false);
+  assert.equal(hihats.matchedBy, null);
+});
+
+test("artwork nested a level down still counts, as a plugin's is", async (t) => {
+  const { image } = await setup(t);
+  // A plugin's images live in image/<vendor>/<product>/, so the vendor folder
+  // holds no files of its own.
+  await fs.rm(path.join(image, "xfer records"), { recursive: true, force: true });
+  await artFolder(image, path.join("xfer records", "serum"));
+
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+
+  const serum = kits.find((k) => k.name === "Serum")!;
+  assert.equal(serum.hasArtwork, true);
+  assert.equal(serum.matchedBy, "vendor");
 });
