@@ -71,6 +71,9 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
 
   const kitInfo = KIT_TYPES.find((k) => k.id === kitType)!;
+  // A nested user sample pack keeps its vendor too: it names the image folder
+  // and is what install writes into the library's WAV tags.
+  const savedVendor = kitInfo.usesDistDb || nestImage ? vendor : "";
   const productError = product ? validateFolderName(product) : null;
   const vendorError =
     kitInfo.usesDistDb && vendor ? validateFolderName(vendor) : null;
@@ -169,7 +172,7 @@ export default function Page() {
     try {
       const form = new FormData();
       form.set("kitType", kitType);
-      form.set("vendor", kitInfo.usesDistDb ? vendor : "");
+      form.set("vendor", savedVendor);
       form.set("product", product);
       form.set("fileType", fileType);
       form.set("categories", categories.join(","));
@@ -204,7 +207,7 @@ export default function Page() {
     try {
       const form = new FormData();
       form.set("kitType", kitType);
-      form.set("vendor", kitInfo.usesDistDb ? vendor : "");
+      form.set("vendor", savedVendor);
       form.set("product", product);
       form.set("fileType", fileType);
       form.set("categories", categories.join(","));
@@ -426,7 +429,9 @@ export default function Page() {
                   value={vendor}
                   onChange={(e) => {
                     setVendor(e.target.value);
-                    resetOutputs();
+                    // Keep the open pack: rebuilding updates it, and install
+                    // cleans up the old folder through installedAs.
+                    setPreview(null);
                   }}
                 />
                 <datalist id="known-vendors">
@@ -441,7 +446,7 @@ export default function Page() {
                       checked={nestImage}
                       onChange={(e) => {
                         setNestImage(e.target.checked);
-                        resetOutputs();
+                        setPreview(null);
                       }}
                     />
                     Nest under the vendor

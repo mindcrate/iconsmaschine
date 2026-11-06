@@ -58,7 +58,7 @@ export function readPackFields(
   if (productError) throw new BadRequest(`Product name: ${productError}`);
 
   const vendor = str(form, "vendor").trim();
-  if (info.usesDistDb) {
+  if (info.usesDistDb || (bool(form, "nestImage") && vendor)) {
     const vendorError = validateFolderName(vendor);
     if (vendorError) throw new BadRequest(`Vendor name: ${vendorError}`);
   }
