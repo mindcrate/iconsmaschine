@@ -765,7 +765,8 @@ export default function Page() {
             setOverlay(next);
             setPreview(null);
           }}
-          files={specsFor({ nks2 }).map((sp) => sp.file)}
+          files={specsFor({ nks2 })}
+          previews={preview}
         />
 
         <section className="step">

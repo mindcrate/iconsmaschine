@@ -1,6 +1,15 @@
 "use client";
 
-import type { TextOverlay } from "@/lib/overlayspec";
+import { MAX_OVERLAY_TEXT, type TextOverlay } from "@/lib/overlayspec";
+import type { PreviewFile } from "@/lib/types";
+
+/** The minimum a target tile needs to explain itself. */
+export interface OverlayTarget {
+  file: string;
+  width: number;
+  height: number;
+  description: string;
+}
 
 /**
  * The fonts offered. Deliberately short and all present on macOS, since a
@@ -23,12 +32,17 @@ export function OverlayControls({
   value,
   onChange,
   files,
+  previews,
 }: {
   value: TextOverlay;
   onChange: (next: TextOverlay) => void;
-  /** Output filenames the overlay can be applied to. */
-  files: string[];
+  /** Output files the overlay can be applied to. */
+  files: OverlayTarget[];
+  /** Rendered previews, when the pack has been rendered. Keyed by filename. */
+  previews?: PreviewFile[] | null;
 }) {
+  const shotOf = (file: string) =>
+    previews?.find((p) => p.file === file)?.dataUrl ?? null;
   const set = <K extends keyof TextOverlay>(key: K, v: TextOverlay[K]) =>
     onChange({ ...value, [key]: v });
 
@@ -54,13 +68,32 @@ export function OverlayControls({
       </p>
 
       <div className="field">
-        <label>Text</label>
+        <label>
+          Text
+          <span
+            className="sub"
+            style={
+              value.text.length >= MAX_OVERLAY_TEXT
+                ? { color: "var(--danger)" }
+                : undefined
+            }
+          >
+            {value.text.length} / {MAX_OVERLAY_TEXT}
+          </span>
+        </label>
         <input
           type="text"
           placeholder="808 COLLECTION"
+          maxLength={MAX_OVERLAY_TEXT}
           value={value.text}
-          onChange={(e) => set("text", e.target.value)}
+          onChange={(e) => set("text", e.target.value.slice(0, MAX_OVERLAY_TEXT))}
         />
+        {value.text.length > 28 && (
+          <p className="hint" style={{ margin: "6px 0 0" }}>
+            Long text is scaled down to fit, so it may end up small on the
+            134&times;66 files.
+          </p>
+        )}
       </div>
 
       {on && (
@@ -188,20 +221,46 @@ export function OverlayControls({
             <label>
               Apply to<span className="sub">{value.files.length} selected</span>
             </label>
-            <div className="checkline" style={{ flexWrap: "wrap", gap: 12 }}>
-              {files.map((f) => (
-                <label key={f} className="inline-check" style={{ margin: 0 }}>
-                  <input
-                    type="checkbox"
-                    checked={value.files.includes(f)}
-                    onChange={() => toggleFile(f)}
-                  />
-                  {f}
-                </label>
-              ))}
+            <p className="hint" style={{ margin: "0 0 10px" }}>
+              Filenames are NI's, not yours - the picture and the note under
+              each one say where it actually shows up.
+            </p>
+            <div className="ov-targets">
+              {files.map((f) => {
+                const picked = value.files.includes(f.file);
+                const shot = shotOf(f.file);
+                return (
+                  <button
+                    key={f.file}
+                    type="button"
+                    className={picked ? "ov-target on" : "ov-target"}
+                    aria-pressed={picked}
+                    onClick={() => toggleFile(f.file)}
+                    title={f.description}
+                  >
+                    <span
+                      className="ov-shot"
+                      /* Hold the file's real aspect ratio so the tile reads as
+                         that shape even before anything has been rendered. */
+                      style={{ aspectRatio: `${f.width} / ${f.height}` }}
+                    >
+                      {shot ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={shot} alt="" />
+                      ) : (
+                        <span className="ov-shot-empty">
+                          {f.width}&times;{f.height}
+                        </span>
+                      )}
+                    </span>
+                    <span className="ov-name">{f.file}</span>
+                    <span className="ov-where">{f.description}</span>
+                  </button>
+                );
+              })}
             </div>
             {value.files.length === 0 && (
-              <p className="hint" style={{ margin: "6px 0 0" }}>
+              <p className="hint" style={{ margin: "10px 0 0" }}>
                 Nothing selected, so the text will not appear on any file.
               </p>
             )}
