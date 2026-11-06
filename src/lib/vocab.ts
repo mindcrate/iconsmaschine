@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { niDistDatabaseDir } from "./paths";
+import { findMaschineDb, openMaschineDb, str, tryAll } from "./maschinedb";
+import { effectiveVendor } from "./kits";
+import { validateFolderName } from "./spec";
+import suggestionFile from "../data/vendor-suggestions.json" with { type: "json" };
 
 /**
  * Maschine accepts a controlled vocabulary of FileType and Category strings.
@@ -14,7 +18,10 @@ import { niDistDatabaseDir } from "./paths";
 export interface Vocabulary {
   /** FileType -> categories seen with it, most common first. */
   byFileType: Record<string, string[]>;
+  /** Vendors Maschine itself records, spelled as it records them. Sorted A-Z, case-insensitive. */
   vendors: string[];
+  /** Unverified spellings from src/data/vendor-suggestions.json, minus any already in `vendors` (case-insensitive). Sorted A-Z, case-insensitive. */
+  suggestedVendors: string[];
   /** True when read from installed entries rather than the fallback. */
   fromDisk: boolean;
   scanned: number;
@@ -68,6 +75,80 @@ interface CategoriesFile {
   CategoryDB?: { FileType?: string; Categories?: string[] }[];
 }
 
+const clean = (v: string) => v.replace(/\s+/g, " ").trim();
+const key = (v: string) => v.toLowerCase();
+const byName = (a: string, b: string) =>
+  key(a).localeCompare(key(b)) || a.localeCompare(b);
+
+/**
+ * `known` is in priority order: the first spelling seen per case-insensitive
+ * key wins. Suggestions never repeat a known name, and any the folder-name
+ * check would reject are dropped, since the field would reject them too.
+ */
+export function mergeVendors(
+  known: string[],
+  suggestions: string[],
+): { vendors: string[]; suggestedVendors: string[] } {
+  const seen = new Set<string>();
+  const vendors: string[] = [];
+  for (const raw of known) {
+    const v = clean(raw);
+    if (!v || seen.has(key(v))) continue;
+    seen.add(key(v));
+    vendors.push(v);
+  }
+  const suggestedVendors: string[] = [];
+  for (const raw of suggestions) {
+    const v = clean(raw);
+    if (!v || seen.has(key(v)) || validateFolderName(v)) continue;
+    seen.add(key(v));
+    suggestedVendors.push(v);
+  }
+  return {
+    vendors: vendors.sort(byName),
+    suggestedVendors: suggestedVendors.sort(byName),
+  };
+}
+
+/** Vendor names in Maschine's own database, commonest spelling first. */
+async function readDbVendors(): Promise<string[]> {
+  const dbPath = findMaschineDb();
+  if (!dbPath) return [];
+  try {
+    const opened = await openMaschineDb(dbPath);
+    try {
+      const counts = new Map<string, number>();
+      const add = (sql: string, col: string) => {
+        for (const r of tryAll(opened.db, sql)) {
+          const v = clean(str(r[col]));
+          if (!v || !effectiveVendor(v)) continue;
+          counts.set(v, (counts.get(v) ?? 0) + Number(r.n ?? 0));
+        }
+      };
+      add(
+        "SELECT vendor AS v, COUNT(*) AS n FROM k_sound_info WHERE vendor IS NOT NULL GROUP BY vendor",
+        "v",
+      );
+      add(
+        "SELECT bcvendor AS v, COUNT(*) AS n FROM k_bank_chain WHERE bcvendor IS NOT NULL GROUP BY bcvendor",
+        "v",
+      );
+      return [...counts]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([name]) => name);
+    } finally {
+      await opened.cleanup().catch(() => {});
+      try {
+        opened.db.close();
+      } catch {
+        /* already closed */
+      }
+    }
+  } catch {
+    return [];
+  }
+}
+
 export async function readVocabulary(): Promise<Vocabulary> {
   const root = niDistDatabaseDir();
   const counts = new Map<string, Map<string, number>>();
@@ -111,10 +192,15 @@ export async function readVocabulary(): Promise<Vocabulary> {
 
   await walk(root, 0);
 
+  const merged = mergeVendors(
+    [...vendors, ...(await readDbVendors())],
+    suggestionFile.vendors,
+  );
+
   if (scanned === 0) {
     return {
       byFileType: FALLBACK,
-      vendors: [],
+      ...merged,
       fromDisk: false,
       scanned: 0,
     };
@@ -129,7 +215,7 @@ export async function readVocabulary(): Promise<Vocabulary> {
 
   return {
     byFileType,
-    vendors: [...vendors].sort(),
+    ...merged,
     fromDisk: true,
     scanned,
   };
