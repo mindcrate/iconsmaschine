@@ -62,14 +62,62 @@ fs.copyFileSync(dbPath, copy);
 try {
   const d = new DatabaseSync(copy);
 
-  const chains = d
-    .prepare("SELECT id, bcvendor, entry1, entry2 FROM k_bank_chain")
-    .all()
-    .filter((r) => String(r.entry1 ?? "").trim().toLowerCase().includes(needle));
+  // SELECT * can throw on this database: some tables carry nanosecond
+  // timestamps that overflow a JS number. Fall back to the columns we need.
+  let allChains: Record<string, unknown>[];
+  try {
+    allChains = d.prepare("SELECT * FROM k_bank_chain").all();
+  } catch {
+    allChains = d
+      .prepare("SELECT id, bcvendor, entry1, entry2, entry3 FROM k_bank_chain")
+      .all();
+  }
+  // The browser heading is usually entry1, but a library added by hand can
+  // land in another entry or carry an alias, so match on any text column.
+  const matches = (r: Record<string, unknown>) =>
+    Object.entries(r).some(
+      ([k, v]) =>
+        k !== "id" && typeof v === "string" && v.trim().toLowerCase().includes(needle),
+    );
+  const chains = allChains.filter(matches);
 
   if (chains.length === 0) {
-    console.log(`No bank chain whose name contains "${needle}".`);
-    console.log("The library may not be imported yet: Preferences > Library > User > Add, then Rescan.");
+    console.log(`Nothing in k_bank_chain mentions "${needle}".\n`);
+    const st = fs.statSync(dbPath);
+    console.log(`Database:  ${dbPath}`);
+    console.log(`Last written: ${st.mtime.toLocaleString()}`);
+    const age = (Date.now() - st.mtimeMs) / 60000;
+    if (age > 10) {
+      console.log(
+        `  ^ ${Math.round(age)} minutes ago. Maschine writes this on rescan and on quit,`,
+      );
+      console.log("    so a library added since then is in the running app but not here.");
+      console.log("    Quit Maschine (or Preferences > Library > Rescan) and run this again.");
+    }
+
+    // Does the audio at least show up in the content paths?
+    const paths = d
+      .prepare("SELECT id, path FROM k_content_path")
+      .all()
+      .filter((r) => String(r.path ?? "").toLowerCase().includes(needle));
+    if (paths.length > 0) {
+      console.log("\nBut a content path matches, so the folder is known:");
+      for (const r of paths) console.log(`  [${r.id}] ${r.path}`);
+      console.log("  The sounds in it have not been indexed into a bank chain yet.");
+    }
+
+    // Show what WAS added last, which is usually the library in question
+    // under a name other than the one searched for.
+    const recent = allChains.slice(-8).reverse();
+    if (recent.length) {
+      console.log("\nMost recently added bank chains, in case it is under another name:");
+      for (const r of recent) {
+        const parts = Object.entries(r)
+          .filter(([k, v]) => k !== "id" && typeof v === "string" && v.trim())
+          .map(([k, v]) => `${k}="${String(v).trim()}"`);
+        console.log(`  [${r.id}] ${parts.join("  ")}`);
+      }
+    }
     process.exit(0);
   }
 
