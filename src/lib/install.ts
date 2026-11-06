@@ -30,7 +30,9 @@ export interface InstallPlan {
   /** Folders a rename has left behind, which Install can also clean up. */
   staleDirs: string[];
   /** The WAV files that would get a vendor and bank tag. null when none apply. */
-  samples: { count: number; folders: string[] } | null;
+  samples: { count: number; folders: string[]; bytes: number } | null;
+  /** Where originals would be copied, and the free space there. null when not backing up. */
+  backup: { dir: string; freeBytes: number } | null;
 }
 
 export interface InstallInput {
@@ -138,7 +140,10 @@ function buildFileSet(input: InstallInput) {
   return { productFolder, imageSegments, imageFiles, distDbFiles, samples };
 }
 
-export async function planInstall(input: InstallInput): Promise<InstallPlan> {
+export async function planInstall(
+  input: InstallInput,
+  opts: { backupDir?: string | null } = {},
+): Promise<InstallPlan> {
   const imageRoot = niImageDir();
   const distDbRoot = niDistDatabaseDir();
   const warnings: string[] = [];
@@ -215,6 +220,19 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
     );
   }
 
+  let bytes = 0;
+  for (const t of samples ?? []) bytes += (await statOrNull(t.path))?.bytes ?? 0;
+
+  const backup =
+    samples && samples.length > 0 && opts.backupDir
+      ? { dir: opts.backupDir, freeBytes: await freeBytesAt(opts.backupDir) }
+      : null;
+  if (backup && bytes > backup.freeBytes) {
+    warnings.push(
+      `Backing up the WAV files needs up to ${Math.ceil(bytes / 1e6)} MB, but only ${Math.floor(backup.freeBytes / 1e6)} MB is free at ${backup.dir}. Free some space or untick the backup.`,
+    );
+  }
+
   return {
     imageRoot,
     distDbRoot,
@@ -229,9 +247,19 @@ export async function planInstall(input: InstallInput): Promise<InstallPlan> {
       ? {
           count: samples.length,
           folders: [...new Set(samples.map((t) => path.dirname(t.path)))].sort(),
+          bytes,
         }
       : null,
+    backup,
   };
+}
+
+/** Free space on the volume that holds `dir`, which may not exist yet. */
+async function freeBytesAt(dir: string): Promise<number> {
+  let at = dir;
+  while (!(await statOrNull(at)) && path.dirname(at) !== at) at = path.dirname(at);
+  const s = await fs.statfs(at);
+  return s.bavail * s.bsize;
 }
 
 /** The folders a rename has stranded, if they still exist. */
@@ -294,6 +322,9 @@ export interface SampleTagResult {
   tagged: number;
   unchanged: number;
   skipped: { file: string; reason: string }[];
+  /** Originals copied this run. Files already backed up earlier are not copied again. */
+  backedUp: number;
+  backupDir: string | null;
 }
 
 /**
@@ -302,8 +333,12 @@ export interface SampleTagResult {
  * are renamed over it, so a crash never leaves half a WAV. The rename gives the
  * file a new modified time, which Maschine's start-up scan needs to notice it.
  */
-async function tagSamples(targets: SampleTarget[], vendor: string): Promise<SampleTagResult> {
-  const result: SampleTagResult = { tagged: 0, unchanged: 0, skipped: [] };
+async function tagSamples(
+  targets: SampleTarget[],
+  vendor: string,
+  backupDir: string | null,
+): Promise<SampleTagResult> {
+  const result: SampleTagResult = { tagged: 0, unchanged: 0, skipped: [], backedUp: 0, backupDir };
 
   for (const target of targets) {
     const temp = path.join(path.dirname(target.path), `.${path.basename(target.path)}.iconmaschine-tmp`);
@@ -319,6 +354,7 @@ async function tagSamples(targets: SampleTarget[], vendor: string): Promise<Samp
       } else if (outcome.kind === "unchanged") {
         result.unchanged++;
       } else {
+        if (backupDir && (await backUpOriginal(target.path, backupDir))) result.backedUp++;
         const { mode } = await fs.stat(target.path);
         await fs.writeFile(temp, outcome.buffer, { mode });
         await fs.rename(temp, target.path);
@@ -337,9 +373,36 @@ async function tagSamples(targets: SampleTarget[], vendor: string): Promise<Samp
   return result;
 }
 
+/**
+ * Copies a WAV into `backupDir`, mirroring its absolute path, unless a copy is
+ * already there. An existing copy is the true original: a later install sees
+ * files that are already tagged, and must not replace it with one of those.
+ * Throws when the copy fails, so the caller leaves the file untouched.
+ */
+async function backUpOriginal(file: string, backupDir: string): Promise<boolean> {
+  const copy = path.join(backupDir, path.relative(path.parse(file).root, file));
+  if (await statOrNull(copy)) return false;
+  try {
+    await fs.mkdir(path.dirname(copy), { recursive: true });
+    await fs.copyFile(file, copy, fs.constants.COPYFILE_EXCL);
+  } catch (err) {
+    throw new Error(`The backup copy failed, so the file was left alone: ${(err as Error).message}`);
+  }
+  return true;
+}
+
+/** Writes the tags again without touching the artwork, for files a later save has reverted. */
+export async function retagSamples(
+  input: InstallInput,
+  opts: { backupDir?: string | null } = {},
+): Promise<SampleTagResult | null> {
+  const { samples } = buildFileSet(input);
+  return samples ? tagSamples(samples, input.imageVendor!, opts.backupDir ?? null) : null;
+}
+
 export async function install(
   input: InstallInput,
-  opts: { cleanStale?: boolean } = {},
+  opts: { cleanStale?: boolean; backupDir?: string | null } = {},
 ): Promise<InstallResult> {
   const imageRoot = niImageDir();
   const distDbRoot = niDistDatabaseDir();
@@ -384,7 +447,9 @@ export async function install(
     }
   }
 
-  const sampleResult = samples ? await tagSamples(samples, input.imageVendor!) : null;
+  const sampleResult = samples
+    ? await tagSamples(samples, input.imageVendor!, opts.backupDir ?? null)
+    : null;
 
   return { imageDir, distDbDir, written, cleaned, samples: sampleResult };
 }

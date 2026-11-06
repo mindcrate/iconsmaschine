@@ -535,7 +535,7 @@ test("install tags each sample and leaves the audio alone", async (t) => {
   const lib = await sampleLibrary(base, ["kick.wav", "snare.wav"]);
 
   const result = await install(packInput(lib.targets));
-  assert.deepEqual(result.samples, { tagged: 2, unchanged: 0, skipped: [] });
+  assert.deepEqual(result.samples, { tagged: 2, unchanged: 0, skipped: [], backedUp: 0, backupDir: null });
 
   const after = await fs.readFile(lib.targets[0].path);
   const info = readSoundInfo(after)!;
@@ -546,7 +546,7 @@ test("install tags each sample and leaves the audio alone", async (t) => {
   assert.ok(data.data.equals(lib.audio));
 
   const again = await install(packInput(lib.targets));
-  assert.deepEqual(again.samples, { tagged: 0, unchanged: 2, skipped: [] });
+  assert.deepEqual(again.samples, { tagged: 0, unchanged: 2, skipped: [], backedUp: 0, backupDir: null });
 });
 
 test("the plan counts samples and folders and writes nothing", async (t) => {
@@ -555,7 +555,7 @@ test("the plan counts samples and folders and writes nothing", async (t) => {
   const lib = await sampleLibrary(base, ["kick.wav", "snare.wav"]);
 
   const plan = await planInstall(packInput(lib.targets));
-  assert.deepEqual(plan.samples, { count: 2, folders: [lib.dir] });
+  assert.deepEqual(plan.samples, { count: 2, folders: [lib.dir], bytes: lib.wav.length * 2 });
   for (const tgt of lib.targets) {
     assert.ok((await fs.readFile(tgt.path)).equals(lib.wav), "plan must not touch a WAV");
   }
@@ -607,4 +607,67 @@ test("a library name ending in .WAV gets a warning to rename its folder", async 
   assert.equal(good.warnings.some((w) => w.includes("ends in")), false);
   const dotted = await planInstall({ ...base, product: "Oki Computer 2.1" });
   assert.equal(dotted.warnings.some((w) => w.includes("ends in")), false);
+});
+
+const backupOf = (backupDir: string, file: string) =>
+  path.join(backupDir, path.relative(path.parse(file).root, file));
+
+test("install backs up each original WAV before tagging it, outside the library", async (t) => {
+  const { base } = await tempRoot(t);
+  const { install, planInstall } = await import("../src/lib/install.ts");
+  const lib = await sampleLibrary(base, ["kick.wav", "snare.wav"]);
+  const backupDir = path.join(base, "backups", "pack-1");
+
+  const plan = await planInstall(packInput(lib.targets), { backupDir });
+  assert.equal(plan.samples!.bytes, lib.wav.length * 2);
+  assert.equal(plan.backup!.dir, backupDir);
+  assert.ok(plan.backup!.freeBytes > 0);
+  await assert.rejects(fs.stat(backupDir), "a plan must not create the backup");
+
+  const result = await install(packInput(lib.targets), { backupDir });
+  assert.equal(result.samples!.tagged, 2);
+  assert.equal(result.samples!.backedUp, 2);
+  for (const tgt of lib.targets) {
+    assert.ok((await fs.readFile(backupOf(backupDir, tgt.path))).equals(lib.wav), "copy is the original");
+    assert.equal((await fs.readFile(tgt.path)).equals(lib.wav), false, "the library file was tagged");
+  }
+  assert.deepEqual((await fs.readdir(lib.dir)).sort(), ["kick.wav", "snare.wav"], "nothing extra beside the samples");
+});
+
+test("a second install never replaces the original backup with a tagged copy", async (t) => {
+  const { base } = await tempRoot(t);
+  const { install, retagSamples } = await import("../src/lib/install.ts");
+  const lib = await sampleLibrary(base, ["kick.wav"]);
+  const backupDir = path.join(base, "backups", "pack-1");
+
+  await install(packInput(lib.targets), { backupDir });
+  const renamed = lib.targets.map((x) => ({ ...x, bankchain: ["808 COLLECTION", "Kicks"] }));
+  const again = await retagSamples(packInput(renamed), { backupDir });
+  assert.equal(again!.tagged, 1, "the new bank is written");
+  assert.equal(again!.backedUp, 0);
+  assert.ok((await fs.readFile(backupOf(backupDir, lib.targets[0].path))).equals(lib.wav));
+});
+
+test("a failed backup leaves the WAV untouched", async (t) => {
+  const { base } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+  const lib = await sampleLibrary(base, ["kick.wav"]);
+  const blocker = path.join(base, "not-a-folder");
+  await fs.writeFile(blocker, "x");
+
+  const result = await install(packInput(lib.targets), { backupDir: blocker });
+  assert.equal(result.samples!.tagged, 0);
+  assert.match(result.samples!.skipped[0].reason, /backup/i);
+  assert.ok((await fs.readFile(lib.targets[0].path)).equals(lib.wav));
+});
+
+test("re-applying tags writes no artwork", async (t) => {
+  const { base, image } = await tempRoot(t);
+  const { retagSamples } = await import("../src/lib/install.ts");
+  const lib = await sampleLibrary(base, ["kick.wav"]);
+
+  const result = await retagSamples(packInput(lib.targets));
+  assert.equal(result!.tagged, 1);
+  assert.equal(result!.backupDir, null);
+  assert.deepEqual(await fs.readdir(image), []);
 });

@@ -1,6 +1,8 @@
 import { buildPack, distDbInputFor, PackNotFound } from "@/lib/build";
 import { jsonError } from "@/lib/form";
-import { install, planInstall, uninstall } from "@/lib/install";
+import path from "node:path";
+import { install, planInstall, retagSamples, uninstall } from "@/lib/install";
+import { backupsDir } from "@/lib/paths";
 import { scanKits, userLibrarySamples } from "@/lib/kits";
 import { needsDistDb, savePack } from "@/lib/store";
 
@@ -18,6 +20,10 @@ export async function POST(request: Request, { params }: Ctx) {
     const body = (await request.json().catch(() => ({}))) as {
       dryRun?: boolean;
       cleanStale?: boolean;
+      /** Copy each WAV before its tag changes. On unless turned off. */
+      backup?: boolean;
+      /** Write the WAV tags again and leave the artwork alone. */
+      tagsOnly?: boolean;
     };
     const { pack, files } = await buildPack(id);
 
@@ -38,7 +44,8 @@ export async function POST(request: Request, { params }: Ctx) {
       previous: pack.installedAs,
     };
 
-    const plan = await planInstall(input);
+    const backupDir = body.backup === false ? null : path.join(backupsDir(), pack.id);
+    const plan = await planInstall(input, { backupDir });
     if (library && library.samples.length === 0) {
       plan.warnings.push(
         library.note ??
@@ -48,6 +55,18 @@ export async function POST(request: Request, { params }: Ctx) {
     await warnIfMaschineDisagrees(plan, pack.product);
     if (body.dryRun !== false) return Response.json({ plan });
 
+    if (plan.backup && plan.samples && plan.samples.bytes > plan.backup.freeBytes) {
+      return Response.json(
+        { error: "There is not enough free space for the WAV backup. Free some space or untick the backup." },
+        { status: 409 },
+      );
+    }
+
+    if (body.tagsOnly) {
+      const retag = await retagSamples(input, { backupDir });
+      return Response.json({ plan, retag });
+    }
+
     if (!plan.rootExists || !plan.rootWritable) {
       return Response.json(
         { error: plan.warnings.join(" ") || "Target folder is not writable." },
@@ -55,7 +74,10 @@ export async function POST(request: Request, { params }: Ctx) {
       );
     }
 
-    const result = await install(input, { cleanStale: body.cleanStale !== false });
+    const result = await install(input, {
+      cleanStale: body.cleanStale !== false,
+      backupDir,
+    });
 
     // Remember where it landed, so a later rename can clean up after itself.
     await savePack({

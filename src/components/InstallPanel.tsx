@@ -4,6 +4,8 @@ import { useState } from "react";
 import { formatBytes, postJson } from "@/lib/client";
 import type { InstallPlan, InstallResult } from "@/lib/types";
 
+type SampleTagResult = NonNullable<InstallResult["samples"]>;
+
 interface UninstallResult {
   removed: string[];
   keptFolders: string[];
@@ -23,6 +25,8 @@ export function InstallPanel({
   const [error, setError] = useState<string | null>(null);
   const [removed, setRemoved] = useState<UninstallResult | null>(null);
   const [cleanStale, setCleanStale] = useState(true);
+  const [backup, setBackup] = useState(true);
+  const [retag, setRetag] = useState<SampleTagResult | null>(null);
 
   async function remove() {
     if (
@@ -48,20 +52,23 @@ export function InstallPanel({
     }
   }
 
-  async function run(dryRun: boolean) {
+  async function run(dryRun: boolean, tagsOnly = false) {
     setBusy(true);
     setError(null);
+    setRetag(null);
     if (dryRun) setResult(null);
     try {
-      const res = await postJson<{ plan: InstallPlan; result?: InstallResult }>(
-        `/api/packs/${packId}/install`,
-        { dryRun, cleanStale },
-      );
+      const res = await postJson<{
+        plan: InstallPlan;
+        result?: InstallResult;
+        retag?: SampleTagResult | null;
+      }>(`/api/packs/${packId}/install`, { dryRun, cleanStale, backup, tagsOnly });
       setPlan(res.plan);
       if (res.result) {
         setResult(res.result);
         onChanged?.();
       }
+      if (res.retag) setRetag(res.retag);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -71,6 +78,7 @@ export function InstallPanel({
 
   const overwrites = plan?.writes.filter((w) => w.existing).length ?? 0;
   const blocked = plan ? !plan.rootExists || !plan.rootWritable : false;
+  const hasSamples = Boolean(plan?.samples && plan.samples.count > 0);
 
   return (
     <div>
@@ -208,9 +216,58 @@ export function InstallPanel({
               >
                 {busy ? <><span className="spinner" /> Installing…</> : "Install to NI Resources"}
               </button>
+              {hasSamples && (
+                <>
+                  <button
+                    className="btn secondary"
+                    onClick={() => run(false, true)}
+                    disabled={busy}
+                    title="Write the vendor and bank tags into the WAV files again, without touching the artwork."
+                  >
+                    Re-apply tags only
+                  </button>
+                  <label className="inline-check">
+                    <input
+                      type="checkbox"
+                      checked={backup}
+                      onChange={(e) => setBackup(e.target.checked)}
+                    />
+                    Back up the original WAV files first ({formatBytes(plan.samples!.bytes)} at most)
+                  </label>
+                </>
+              )}
+            </div>
+          )}
+          {hasSamples && backup && plan.backup && !result && (
+            <div className="hint" style={{ marginTop: 6 }}>
+              Copies go to {plan.backup.dir}. A file is copied only the first time it changes, so the
+              copy stays the true original.
             </div>
           )}
         </>
+      )}
+
+      {retag && (
+        <div className="note good">
+          Re-applied tags: {retag.tagged} WAV file{retag.tagged === 1 ? "" : "s"} tagged,{" "}
+          {retag.unchanged} already had the tag, {retag.skipped.length} skipped. The artwork was not
+          touched.
+          {retag.backupDir && retag.backedUp > 0 && (
+            <> Backed up {retag.backedUp} original{retag.backedUp === 1 ? "" : "s"} to {retag.backupDir}.</>
+          )}
+          {retag.skipped.length > 0 && (
+            <div style={{ marginTop: 4, fontFamily: "var(--mono)", fontSize: 11.5 }}>
+              {retag.skipped.map((s) => (
+                <div key={s.file}>
+                  {s.file}: {s.reason}
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ marginTop: 8 }}>
+            Rescan the library in Maschine 3, or quit and reopen it, to see the change.
+          </div>
+        </div>
       )}
 
       {result && (
@@ -230,6 +287,9 @@ export function InstallPanel({
               Tagged {result.samples.tagged} WAV file
               {result.samples.tagged === 1 ? "" : "s"}. {result.samples.unchanged} already
               had the tag. {result.samples.skipped.length} skipped.
+              {result.samples.backupDir && result.samples.backedUp > 0 && (
+                <> Backed up {result.samples.backedUp} original{result.samples.backedUp === 1 ? "" : "s"} to {result.samples.backupDir}.</>
+              )}
               {result.samples.skipped.length > 0 && (
                 <div style={{ marginTop: 4, fontFamily: "var(--mono)", fontSize: 11.5 }}>
                   {result.samples.skipped.map((s) => (

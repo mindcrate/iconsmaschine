@@ -30,6 +30,11 @@ export function packsDir(): string {
   return path.join(iconmaschineHome(), "packs");
 }
 
+/** Original WAVs, copied here before a tag is written. Never inside a library Maschine scans. */
+export function backupsDir(): string {
+  return path.join(iconmaschineHome(), "backups");
+}
+
 function expandHome(p: string): string {
   return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p;
 }
