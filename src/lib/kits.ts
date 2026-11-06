@@ -89,7 +89,7 @@ export interface KitScan {
  * "Other" is Maschine's catch-all, not a real vendor, so it is treated as
  * vendor-less for artwork purposes.
  */
-function effectiveVendor(v: string): string {
+export function effectiveVendor(v: string): string {
   return v.toLowerCase() === "other" ? "" : v;
 }
 

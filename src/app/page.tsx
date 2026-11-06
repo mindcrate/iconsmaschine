@@ -439,6 +439,13 @@ export default function Page() {
                   {(vocab?.vendors ?? []).map((v) => (
                     <option key={v} value={v} />
                   ))}
+                  {(vocab?.suggestedVendors ?? []).map((v) => (
+                    <option
+                      key={`s-${v}`}
+                      value={v}
+                      label="Suggestion from KVR Audio, spelling not checked"
+                    />
+                  ))}
                 </datalist>
                 {!kitInfo.usesDistDb && (
                   <label className="inline-check">
@@ -482,7 +489,9 @@ export default function Page() {
                       Tick the box above for a library you added yourself, which
                       nests under its vendor instead.
                     </>
-                  )}
+                  )}{" "}
+                  Names marked as suggestions come from KVR Audio and are not
+                  checked against Maschine.
                 </div>
               </div>
 
