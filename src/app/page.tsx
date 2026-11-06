@@ -8,6 +8,7 @@ import { LibraryPanel } from "@/components/LibraryPanel";
 import { CropEditor } from "@/components/CropEditor";
 import { KitPicker } from "@/components/KitPicker";
 import { PresetEditor } from "@/components/PresetEditor";
+import { BatchTagPanel } from "@/components/BatchTagPanel";
 import { OverlayControls } from "@/components/OverlayControls";
 import { DEFAULT_OVERLAY, type TextOverlay } from "@/lib/overlayspec";
 import { specsFor } from "@/lib/spec";
@@ -885,6 +886,11 @@ export default function Page() {
         <section className="step">
           <h2>Preset tags (GENERAL, TYPES, CHARACTERS)</h2>
           <PresetEditor />
+        </section>
+
+        <section className="step">
+          <h2>Batch preset tags</h2>
+          <BatchTagPanel />
         </section>
 
         <section className="step">
