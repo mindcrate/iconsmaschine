@@ -109,7 +109,16 @@ export function InstallPanel({
       {plan && (
         <>
           <div className="path-preview" style={{ marginTop: 16 }}>
-            {plan.imageRoot}/<b>{plan.imageDir.split("/").pop()}</b>/
+            {plan.imageRoot}/
+            <b>
+              {/* Everything below the root, not just the last segment - a
+                  nested pack writes to <vendor>/<product>/ and showing only
+                  the product made it look as though nesting had not applied. */}
+              {plan.imageDir.startsWith(`${plan.imageRoot}/`)
+                ? plan.imageDir.slice(plan.imageRoot.length + 1)
+                : plan.imageDir.split("/").pop()}
+            </b>
+            /
           </div>
           {plan.distDbDir && (
             <div className="path-preview" style={{ marginTop: 8 }}>

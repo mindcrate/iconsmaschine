@@ -8,6 +8,13 @@ import { LibraryPanel } from "@/components/LibraryPanel";
 import { CropEditor } from "@/components/CropEditor";
 import { KitPicker } from "@/components/KitPicker";
 import { PresetEditor } from "@/components/PresetEditor";
+
+/**
+ * How a display name becomes a folder name on disk. Mirrors folderName() in
+ * lib/distdb, which is not imported here because its module pulls in Buffer
+ * via the .meta writer and this is a client component.
+ */
+const folderish = (display: string) => display.trim().toLowerCase();
 import { PreviewGrid } from "@/components/PreviewGrid";
 import type { Crop, CropMap } from "@/lib/crop";
 import { getJson, sendForm } from "@/lib/client";
@@ -388,14 +395,18 @@ export default function Page() {
           )}
 
           <div className="row">
-            {(kitInfo.usesDistDb || nestImage) && (
-              <div className="field">
+            {/* Always rendered for every kit type. Gating this on `nestImage`
+                meant unchecking the nesting box removed the box along with the
+                field, so there was no way to turn it back on. */}
+            <div className="field">
                 <label>
                   Vendor
                   <span className="sub">
                     {kitInfo.usesDistDb
                       ? "required for plugins"
-                      : "artwork nests under this"}
+                      : nestImage
+                        ? "artwork nests under this"
+                        : "optional"}
                   </span>
                 </label>
                 <input
@@ -432,12 +443,32 @@ export default function Page() {
                   </div>
                 )}
                 <div style={{ color: "var(--muted)", fontSize: 11.5, marginTop: 5 }}>
-                  Must match the vendor <em>exactly</em> as Maschine groups it in
-                  the plugin browser - &quot;Xfer Records&quot;, not
-                  &quot;Xfer&quot;. Check the group heading above your plugin.
+                  {kitInfo.usesDistDb ? (
+                    <>
+                      Must match the vendor <em>exactly</em> as Maschine groups it
+                      in the plugin browser - &quot;Xfer Records&quot;, not
+                      &quot;Xfer&quot;. Check the group heading above your plugin.
+                    </>
+                  ) : nestImage ? (
+                    <>
+                      Artwork goes to{" "}
+                      <code>
+                        image/{folderish(vendor) || "<vendor>"}/
+                        {folderish(product) || "<product>"}/
+                      </code>
+                      , and the same two names go into the .meta in lowercase.
+                      This is how a library you added yourself is laid out.
+                    </>
+                  ) : (
+                    <>
+                      Artwork goes to{" "}
+                      <code>image/{folderish(product) || "<product>"}/</code>.
+                      Tick the box above for a library you added yourself, which
+                      nests under its vendor instead.
+                    </>
+                  )}
                 </div>
               </div>
-            )}
 
             <div className="field">
               <label>
