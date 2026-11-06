@@ -58,6 +58,12 @@ const folderName = (s: string) => s.trim().toLowerCase();
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "im-trace-"));
 const copy = path.join(tmp, "s.db3");
 fs.copyFileSync(dbPath, copy);
+// SQLite keeps recent writes in a -wal sidecar until a checkpoint, which
+// Maschine only does on quit. Copying the .db3 alone reads whatever was true
+// at the last checkpoint - days old, in practice. Bring the sidecars.
+for (const ext of ["-wal", "-shm"]) {
+  try { fs.copyFileSync(dbPath + ext, copy + ext); } catch {}
+}
 
 try {
   const d = new DatabaseSync(copy);
@@ -83,16 +89,30 @@ try {
 
   if (chains.length === 0) {
     console.log(`Nothing in k_bank_chain mentions "${needle}".\n`);
-    const st = fs.statSync(dbPath);
+    // The newest of the database and its write-ahead log: recent changes sit
+    // in the -wal until Maschine checkpoints, so the .db3 mtime alone reads
+    // far older than the data actually is.
     console.log(`Database:  ${dbPath}`);
-    console.log(`Last written: ${st.mtime.toLocaleString()}`);
-    const age = (Date.now() - st.mtimeMs) / 60000;
+    let newest = 0;
+    for (const ext of ["", "-wal"]) {
+      try {
+        const st = fs.statSync(dbPath + ext);
+        console.log(
+          `  ${(ext || ".db3").padEnd(5)} written ${st.mtime.toLocaleString()}`,
+        );
+        newest = Math.max(newest, st.mtimeMs);
+      } catch {
+        if (ext) console.log("  -wal  none (everything is checkpointed into the .db3)");
+      }
+    }
+    const age = (Date.now() - newest) / 60000;
     if (age > 10) {
       console.log(
-        `  ^ ${Math.round(age)} minutes ago. Maschine writes this on rescan and on quit,`,
+        `\n  Newest data here is ${Math.round(age)} minutes old. Maschine holds changes in`,
       );
-      console.log("    so a library added since then is in the running app but not here.");
-      console.log("    Quit Maschine (or Preferences > Library > Rescan) and run this again.");
+      console.log("  memory and writes on rescan and on quit, so anything added since");
+      console.log("  then is live in the app but not yet readable from disk.");
+      console.log("  Quit Maschine completely, then run this again.");
     }
 
     // Does the audio at least show up in the content paths?

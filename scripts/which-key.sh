@@ -34,6 +34,12 @@ const has = (s) => Boolean(s) && folders.has(String(s).trim().toLowerCase());
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "im-wk-"));
 const copy = path.join(tmp, "s.db3");
 fs.copyFileSync(dbPath, copy);
+// SQLite keeps recent writes in a -wal sidecar until a checkpoint, which
+// Maschine only does on quit. Copying the .db3 alone reads whatever was true
+// at the last checkpoint - days old, in practice. Bring the sidecars.
+for (const ext of ["-wal", "-shm"]) {
+  try { fs.copyFileSync(dbPath + ext, copy + ext); } catch {}
+}
 
 try {
   const d = new DatabaseSync(copy);

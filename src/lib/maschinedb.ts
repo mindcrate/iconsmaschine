@@ -47,6 +47,27 @@ export interface OpenedDb {
   cleanup: () => Promise<void>;
 }
 
+/**
+ * Copies a database to a scratch directory, sidecars included.
+ *
+ * SQLite in WAL mode keeps recent writes in a `-wal` file and only folds them
+ * into the main one at a checkpoint, which Maschine does when it quits. A copy
+ * of the `.db3` alone is therefore whatever was true at the last checkpoint -
+ * on one machine that was two days stale, which silently made every reading
+ * taken from it out of date. Bringing the sidecars lets SQLite replay the log.
+ */
+export async function snapshotDatabase(
+  dbPath: string,
+): Promise<{ dir: string; copy: string }> {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "iconmaschine-db-"));
+  const copy = path.join(dir, "snapshot.db3");
+  await fsp.copyFile(dbPath, copy);
+  for (const ext of ["-wal", "-shm"]) {
+    await fsp.copyFile(dbPath + ext, copy + ext).catch(() => {});
+  }
+  return { dir, copy };
+}
+
 export async function openMaschineDb(dbPath: string): Promise<OpenedDb> {
   const { DatabaseSync } = await import("node:sqlite");
 
@@ -56,9 +77,7 @@ export async function openMaschineDb(dbPath: string): Promise<OpenedDb> {
     } as unknown as undefined) as unknown as MaschineDb;
     return { db, source: "database", cleanup: async () => {} };
   } catch {
-    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "iconmaschine-db-"));
-    const copy = path.join(dir, "snapshot.db3");
-    await fsp.copyFile(dbPath, copy);
+    const { dir, copy } = await snapshotDatabase(dbPath);
     const db = new DatabaseSync(copy) as unknown as MaschineDb;
     return {
       db,
