@@ -29,7 +29,7 @@ async function setup(t: { after: (fn: () => unknown) => void }) {
   const db = new DatabaseSync(dbFile);
   db.exec(`
     CREATE TABLE k_bank_chain (id INTEGER, bcvendor TEXT, entry1 TEXT, entry2 TEXT, entry3 TEXT);
-    CREATE TABLE k_sound_info (id INTEGER, bank_chain_id INTEGER, device_type_flags INTEGER, file_ext TEXT, content_path_id INTEGER);
+    CREATE TABLE k_sound_info (id INTEGER, bank_chain_id INTEGER, device_type_flags INTEGER, file_ext TEXT, content_path_id INTEGER, vendor TEXT);
     CREATE TABLE k_content_path (id INTEGER, path TEXT);
     INSERT INTO k_bank_chain VALUES
       (1,'','Arcane Attic','Kits',NULL),
@@ -40,20 +40,22 @@ async function setup(t: { after: (fn: () => unknown) => void }) {
       (6,'','/Volumes/External/thing.mxgrp',NULL,NULL),
       (7,'','Empty Chain',NULL,NULL),
       (8,'MOOSE LIFE','ALL HIHATS PERCUSSION',NULL,NULL),
-      (9,'','Deleted Pack',NULL,NULL);
+      (9,'','Deleted Pack',NULL,NULL),
+      (11,'Other','808 COLLECTION',NULL,NULL);
     -- Path 1 is a folder that exists; path 2 is one we delete in a test, the
     -- shape Maschine leaves behind when a user library is removed.
     INSERT INTO k_content_path VALUES (1,'@LIVE@'),(2,'@DEAD@');
     -- flags: 0+mxgrp Group, 4 one-shot, 8 loop, 1 instrument
     INSERT INTO k_sound_info VALUES
-      (1,1,0,'mxgrp',1),(2,1,0,'mxgrp',1),
-      (3,2,0,'mxgrp',1),(4,2,4,'wav',1),(5,2,8,'wav',1),
-      (6,3,4,'wav',1),
-      (7,4,1,'nksf',1),
-      (8,5,4,'wav',1),(9,5,8,'wav',1),
-      (10,6,4,'wav',1),
-      (11,8,4,'wav',1),(12,8,4,'wav',1),
-      (13,9,4,'wav',2);
+      (1,1,0,'mxgrp',1,NULL),(2,1,0,'mxgrp',1,NULL),
+      (3,2,0,'mxgrp',1,NULL),(4,2,4,'wav',1,NULL),(5,2,8,'wav',1,NULL),
+      (6,3,4,'wav',1,NULL),
+      (7,4,1,'nksf',1,NULL),
+      (8,5,4,'wav',1,NULL),(9,5,8,'wav',1,NULL),
+      (10,6,4,'wav',1,NULL),
+      (11,8,4,'wav',1,NULL),(12,8,4,'wav',1,NULL),
+      (13,9,4,'wav',2,NULL),
+      (15,11,4,'wav',1,'tim moose'),(16,11,4,'wav',1,'tim moose');
   `.replaceAll("@LIVE@", live).replaceAll("@DEAD@", dead));
   db.close();
 
@@ -312,7 +314,7 @@ test("an installed library stays flat, however its vendor reads", async (t) => {
   db.exec(`
     INSERT INTO k_content_path VALUES (3,'/Users/Shared/NI Resources/content/x');
     INSERT INTO k_bank_chain VALUES (10,'Native Instruments','Shared Pack',NULL,NULL);
-    INSERT INTO k_sound_info VALUES (14,10,4,'wav',3);
+    INSERT INTO k_sound_info VALUES (14,10,4,'wav',3,NULL);
   `);
   db.close();
   await artFolder(image, "shared pack");
@@ -324,4 +326,22 @@ test("an installed library stays flat, however its vendor reads", async (t) => {
   assert.equal(pack.nestUnder, null, "installed content does not nest");
   assert.equal(pack.folder, "shared pack");
   assert.equal(pack.matchedBy, "name");
+});
+
+test("the vendor on the sounds beats the bank chain's own field", async (t) => {
+  const { image } = await setup(t);
+  await artFolder(image, path.join("tim moose", "808 collection"));
+
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+
+  // 808 COLLECTION's chain still reads bcvendor "Other" after its 30 sounds
+  // were set to "tim moose" - that edit does not touch the chain's field. The
+  // sounds are the authority, so reading bcvendor alone would send artwork to
+  // the flat path while Maschine looked in the nested one.
+  const kit = kits.find((k) => k.name === "808 COLLECTION")!;
+  assert.equal(kit.vendor, "tim moose");
+  assert.equal(kit.nestUnder, "tim moose");
+  assert.equal(kit.folder, "tim moose/808 collection");
+  assert.equal(kit.matchedBy, "nested");
 });

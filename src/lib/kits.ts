@@ -172,6 +172,35 @@ export async function scanKits(): Promise<KitScan> {
       // k_bank_chain when a user library is removed, so hundreds of chains can
       // outlive their content - one machine had ~700 for deleted sample packs.
       // Offering artwork for those is offering to paint a wall that is gone.
+      // The vendor recorded on the SOUNDS, which is what the walkthrough has
+      // you set (Edit > Properties > Vendor > Apply) and what decides the
+      // artwork folder. k_bank_chain.bcvendor is a different field and does
+      // not follow that edit: after setting 808 COLLECTION's 30 sounds to
+      // "tim moose", bcvendor still read "Other". Reading only bcvendor would
+      // have written to the flat path while Maschine looked in the nested one.
+      const chainSoundVendor = new Map<number, string>();
+      {
+        const counts = new Map<number, Map<string, number>>();
+        for (const r of tryAll(
+          opened.db,
+          `SELECT bank_chain_id AS id, vendor AS v, COUNT(*) AS n
+           FROM k_sound_info WHERE vendor IS NOT NULL AND vendor != ''
+           GROUP BY bank_chain_id, vendor`,
+        )) {
+          const id = Number(r.id);
+          const v = str(r.v);
+          if (!v || !effectiveVendor(v)) continue;
+          const m = counts.get(id) ?? new Map<string, number>();
+          m.set(v, (m.get(v) ?? 0) + Number(r.n ?? 0));
+          counts.set(id, m);
+        }
+        // A chain can hold sounds from several vendors; the commonest wins.
+        for (const [id, m] of counts) {
+          const top = [...m].sort((a, b) => b[1] - a[1])[0];
+          if (top) chainSoundVendor.set(id, top[0]);
+        }
+      }
+
       const livePaths = new Map<string, boolean>();
       const chainLive = new Map<number, boolean>();
       const chainInstalled = new Map<number, boolean>();
@@ -216,7 +245,9 @@ export async function scanKits(): Promise<KitScan> {
         // Some rows hold an absolute path rather than a name - not a kit.
         if (!name || name.startsWith("/")) continue;
 
-        const vendor = effectiveVendor(str(r.bcvendor));
+        // Prefer the sounds' own vendor; fall back to the chain's.
+        const vendor =
+          chainSoundVendor.get(Number(r.id)) ?? effectiveVendor(str(r.bcvendor));
         const counts = byChain.get(Number(r.id));
         if (!counts) continue;
         const sounds = total(counts);
