@@ -7,6 +7,13 @@
  * bundle and broke the build.
  */
 
+/**
+ * Longest overlay text accepted. The renderer scales text down to fit its
+ * box, so a long line does not overflow - it just becomes unreadably small,
+ * which is worse than being told to shorten it.
+ */
+export const MAX_OVERLAY_TEXT = 64;
+
 export interface TextOverlay {
   text: string;
   /** Font family name as the OS knows it, e.g. "Helvetica Neue". */
@@ -96,7 +103,7 @@ export function parseOverlay(value: unknown): TextOverlay | null {
     allowed.includes(x as T) ? (x as T) : dflt;
 
   return {
-    text: text.slice(0, 200),
+    text: text.slice(0, MAX_OVERLAY_TEXT),
     font: (typeof v.font === "string" && v.font.trim()) || DEFAULT_OVERLAY.font,
     weight: oneOf(v.weight, ["normal", "bold"] as const, DEFAULT_OVERLAY.weight),
     italic: v.italic === true,

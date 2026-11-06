@@ -167,7 +167,9 @@ test("hex colours are normalised, and nonsense falls back", () => {
 });
 
 test("parseOverlay clamps hostile input instead of trusting it", async () => {
-  const { parseOverlay, DEFAULT_OVERLAY } = await import("../src/lib/overlay.ts");
+  const { parseOverlay, DEFAULT_OVERLAY, MAX_OVERLAY_TEXT } = await import(
+    "../src/lib/overlay.ts"
+  );
 
   // Nothing to draw is the same as no overlay.
   assert.equal(parseOverlay({ text: "   " }), null);
@@ -186,7 +188,7 @@ test("parseOverlay clamps hostile input instead of trusting it", async () => {
     files: [1, "MST_logo.png", null, "OSO_logo.png"],
   })!;
 
-  assert.equal(o.text.length, 200, "text is bounded");
+  assert.equal(o.text.length, MAX_OVERLAY_TEXT, "text is bounded");
   assert.equal(o.weight, DEFAULT_OVERLAY.weight, "an unknown weight falls back");
   assert.equal(o.align, DEFAULT_OVERLAY.align);
   assert.equal(o.color, DEFAULT_OVERLAY.color, "an unparseable colour falls back");
