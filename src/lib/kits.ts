@@ -2,6 +2,13 @@ import fs from "node:fs/promises";
 import { findMaschineDb, openMaschineDb, str, tryAll } from "./maschinedb";
 import { niImageDir } from "./paths";
 import { folderName } from "./distdb";
+import {
+  classify,
+  emptyCounts,
+  groupsPresent,
+  type ContentCounts,
+  type ContentGroup,
+} from "./contenttype";
 
 /**
  * Your Maschine kits, and which of them have no artwork.
@@ -26,6 +33,10 @@ export interface Kit {
   /** Folder this kit's artwork would live in, relative to image/. */
   folder: string;
   hasArtwork: boolean;
+  /** What the kit actually holds, by content type. */
+  counts: ContentCounts;
+  /** The UI groupings it has content for, largest first. */
+  groups: ContentGroup[];
 }
 
 export interface KitScan {
@@ -73,16 +84,28 @@ export async function scanKits(): Promise<KitScan> {
     const opened = await openMaschineDb(dbPath);
     cleanup = opened.cleanup;
     try {
-      const counts = new Map<number, number>();
+      // Per chain, a breakdown by content type - a kit can hold several at
+      // once (INSTRUMENT SAMPLE LIBRARIES has 8,244 one-shots AND 5,949 loops),
+      // so one label per kit would be wrong.
+      const byChain = new Map<number, ContentCounts>();
       for (const r of tryAll(
         opened.db,
-        "SELECT bank_chain_id AS id, COUNT(*) AS n FROM k_sound_info GROUP BY bank_chain_id",
+        `SELECT bank_chain_id AS id, device_type_flags AS flags, file_ext AS ext,
+                COUNT(*) AS n
+         FROM k_sound_info
+         GROUP BY bank_chain_id, device_type_flags, file_ext`,
       )) {
-        counts.set(Number(r.id), Number(r.n));
+        const id = Number(r.id);
+        const counts = byChain.get(id) ?? emptyCounts();
+        counts[classify(Number(r.flags ?? 0), str(r.ext))] += Number(r.n ?? 0);
+        byChain.set(id, counts);
       }
 
+      const total = (c: ContentCounts) =>
+        Object.values(c).reduce((a, b) => a + b, 0);
+
       // Several chain rows can share a name (different sub-banks), so collapse
-      // them: one kit per folder, with the sounds added up.
+      // them: one kit per folder, with the counts added up.
       const byFolder = new Map<string, Kit>();
 
       for (const r of tryAll(
@@ -94,13 +117,19 @@ export async function scanKits(): Promise<KitScan> {
         if (!name || name.startsWith("/")) continue;
 
         const vendor = effectiveVendor(str(r.bcvendor));
-        const sounds = counts.get(Number(r.id)) ?? 0;
+        const counts = byChain.get(Number(r.id));
+        if (!counts) continue;
+        const sounds = total(counts);
         if (sounds === 0) continue;
 
         const folder = folderName(name);
         const existing = byFolder.get(folder);
         if (existing) {
           existing.sounds += sounds;
+          for (const k of Object.keys(counts) as (keyof ContentCounts)[]) {
+            existing.counts[k] += counts[k];
+          }
+          existing.groups = groupsPresent(existing.counts);
           if (!existing.vendor && vendor) existing.vendor = vendor;
           continue;
         }
@@ -110,7 +139,10 @@ export async function scanKits(): Promise<KitScan> {
           vendor,
           sounds,
           folder,
-          hasArtwork: folders.has(folder) || (vendor !== "" && folders.has(folderName(vendor))),
+          hasArtwork:
+            folders.has(folder) || (vendor !== "" && folders.has(folderName(vendor))),
+          counts,
+          groups: groupsPresent(counts),
         });
       }
 

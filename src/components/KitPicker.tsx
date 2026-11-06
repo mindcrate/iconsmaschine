@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { getJson } from "@/lib/client";
+import {
+  describeCounts,
+  GROUP_LABELS,
+  type ContentCounts,
+  type ContentGroup,
+} from "@/lib/contenttype";
 
 interface Kit {
   name: string;
@@ -10,6 +16,8 @@ interface Kit {
   sounds: number;
   folder: string;
   hasArtwork: boolean;
+  counts: ContentCounts;
+  groups: ContentGroup[];
 }
 
 interface KitScan {
@@ -34,6 +42,7 @@ export function KitPicker({
   const [scan, setScan] = useState<KitScan | null>(null);
   const [filter, setFilter] = useState("");
   const [showAll, setShowAll] = useState(false);
+  const [group, setGroup] = useState<ContentGroup | "all">("all");
   const [busy, setBusy] = useState(true);
 
   useEffect(() => {
@@ -60,8 +69,13 @@ export function KitPicker({
 
   const missing = scan.kits.filter((k) => !k.hasArtwork);
   const pool = showAll ? scan.kits : missing;
-  const shown = pool.filter((k) =>
-    filter ? k.name.toLowerCase().includes(filter.toLowerCase()) : true,
+  const shown = pool
+    .filter((k) => group === "all" || k.groups.includes(group))
+    .filter((k) => (filter ? k.name.toLowerCase().includes(filter.toLowerCase()) : true));
+
+  // Only offer a tab for a grouping that actually has kits behind it.
+  const available = (["groups", "samples", "instruments", "effects", "other"] as const).filter(
+    (g) => pool.some((k) => k.groups.includes(g)),
   );
 
   return (
@@ -72,6 +86,23 @@ export function KitPicker({
           {missing.length} of {scan.kits.length} have no artwork
         </span>
       </label>
+
+      {available.length > 1 && (
+        <div className="tabs" style={{ marginBottom: 10, flexWrap: "wrap" }}>
+          <button aria-selected={group === "all"} onClick={() => setGroup("all")}>
+            All ({pool.length})
+          </button>
+          {available.map((g) => (
+            <button
+              key={g}
+              aria-selected={group === g}
+              onClick={() => setGroup(g)}
+            >
+              {GROUP_LABELS[g]} ({pool.filter((k) => k.groups.includes(g)).length})
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="row" style={{ alignItems: "center", marginBottom: 8 }}>
         <input
@@ -103,7 +134,7 @@ export function KitPicker({
           >
             <span className="kname">{k.name}</span>
             <span className="kmeta">
-              {k.sounds.toLocaleString()} sound{k.sounds === 1 ? "" : "s"}
+              {describeCounts(k.counts)}
               {k.vendor ? ` - vendor "${k.vendor}"` : ""}
             </span>
             <span className={k.hasArtwork ? "kbadge has" : "kbadge"}>

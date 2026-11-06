@@ -17,7 +17,7 @@ async function setup(t: { after: (fn: () => unknown) => void }) {
   const db = new DatabaseSync(dbFile);
   db.exec(`
     CREATE TABLE k_bank_chain (id INTEGER, bcvendor TEXT, entry1 TEXT, entry2 TEXT, entry3 TEXT);
-    CREATE TABLE k_sound_info (id INTEGER, bank_chain_id INTEGER);
+    CREATE TABLE k_sound_info (id INTEGER, bank_chain_id INTEGER, device_type_flags INTEGER, file_ext TEXT);
     INSERT INTO k_bank_chain VALUES
       (1,'','Arcane Attic','Kits',NULL),
       (2,'','Bumpin Flava',NULL,NULL),
@@ -26,13 +26,14 @@ async function setup(t: { after: (fn: () => unknown) => void }) {
       (5,'Other','MASCHINE KITS',NULL,NULL),
       (6,'','/Volumes/External/thing.mxgrp',NULL,NULL),
       (7,'','Empty Chain',NULL,NULL);
+    -- flags: 0+mxgrp Group, 4 one-shot, 8 loop, 1 instrument
     INSERT INTO k_sound_info VALUES
-      (1,1),(2,1),
-      (3,2),(4,2),(5,2),
-      (6,3),
-      (7,4),
-      (8,5),(9,5),
-      (10,6);
+      (1,1,0,'mxgrp'),(2,1,0,'mxgrp'),
+      (3,2,0,'mxgrp'),(4,2,4,'wav'),(5,2,8,'wav'),
+      (6,3,4,'wav'),
+      (7,4,1,'nksf'),
+      (8,5,4,'wav'),(9,5,8,'wav'),
+      (10,6,4,'wav');
   `);
   db.close();
 
@@ -116,4 +117,37 @@ test("a missing database reports rather than throwing", async (t) => {
   const res = await scanKits();
   assert.deepEqual(res.kits, []);
   assert.ok(res.note);
+});
+
+test("a kit is broken down by content type, not given one label", async (t) => {
+  await setup(t);
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+
+  // Bumpin Flava's two chain rows hold a Group, a one-shot and a loop.
+  const flava = kits.find((k) => k.name === "Bumpin Flava")!;
+  assert.equal(flava.counts.group, 1);
+  assert.equal(flava.counts.oneshot, 2, "one from each chain row");
+  assert.equal(flava.counts.loop, 1);
+  assert.equal(flava.sounds, 4);
+
+  // Groups and Samples are separate groupings, both present here.
+  assert.ok(flava.groups.includes("groups"));
+  assert.ok(flava.groups.includes("samples"));
+});
+
+test("Groups, Samples, Instruments and Effects are classified apart", async (t) => {
+  await setup(t);
+  const { scanKits } = await import("../src/lib/kits.ts");
+  const { kits } = await scanKits();
+
+  const arcane = kits.find((k) => k.name === "Arcane Attic")!;
+  assert.deepEqual(arcane.groups, ["groups"], "only .mxgrp content");
+  assert.equal(arcane.counts.group, 2);
+
+  const serum = kits.find((k) => k.name === "Serum")!;
+  assert.deepEqual(serum.groups, ["instruments"], "an .nksf preset is an instrument");
+
+  const mk = kits.find((k) => k.name === "MASCHINE KITS")!;
+  assert.deepEqual(mk.groups, ["samples"], "wav content is samples");
 });

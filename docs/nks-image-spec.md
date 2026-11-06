@@ -349,3 +349,32 @@ common cause of artwork never appearing.
 
 Several chain rows can share a name (different sub-banks), so they are
 collapsed to one kit per folder with the sound counts added up.
+
+
+## Content types
+
+`k_sound_info.device_type_flags` is a bitmask. Decoded by pairing each value
+with the file extensions behind it on a real 270,443-row database:
+
+| Flag | Extensions seen | Means |
+|---|---|---|
+| 1 | `nksf` `nksn` `ens` `nmsv` `nki` `nabs` `nbkt` `nfm8` `nrkt` | Instrument |
+| 2 | `ngrr` `nksfx` `nifx` `mxfx` `rkplr` | Effect |
+| 4 | `wav` `aif` (156,416 + 2,896) | One-shot |
+| 8 | `wav` `aif` (50,969 + 741) | Loop |
+| 0 | `mxsnd` `mxgrp` `mxprj` | Maschine's own formats |
+
+Flag 0 needs the extension to tell a Group from a Sound from a Project.
+
+The `p_sound_info_<Type>_1` / `_2` tables are per-type partitions carrying the
+same columns as `k_sound_info` plus the bank chain. They are not needed:
+`device_type_flags` with `file_ext` gives the same answer from one table, and
+avoids depending on how the partitions are split.
+
+### Kits hold several types at once
+
+`INSTRUMENT SAMPLE LIBRARIES` has 8,244 one-shots **and** 5,949 loops, so one
+label per kit would be wrong. Each kit carries a breakdown, and the picker
+offers a tab per grouping - Groups & Sounds, Samples (one-shots and loops),
+Instruments, Effects - with a kit appearing under every grouping it has content
+for. Tabs with nothing behind them are hidden.
