@@ -55,6 +55,12 @@ export interface Pack {
   /** Hand-adjusted crops, keyed by output filename. */
   crops: CropMap;
   /**
+   * Output files that use their own image instead of the artwork or logo, as
+   * output file name -> image id. The id is the image's sha256, stored in the
+   * pack folder as `source-<id>.png`. Absent on packs made before this existed.
+   */
+  fileSources?: Record<string, string>;
+  /**
    * Where this pack was last written. Renaming the vendor or product changes
    * the install path, so without this the old folders would be orphaned in NI
    * Resources with no record that they came from here.
@@ -92,6 +98,10 @@ export function hasMoved(pack: Pack): boolean {
 
 export const ARTWORK_FILE = "source-artwork.png";
 export const LOGO_FILE = "source-logo.png";
+
+/** A per-file image id: the sha256 of its PNG bytes. */
+export const IMAGE_ID = /^[0-9a-f]{64}$/;
+const imageFile = (imageId: string) => `source-${imageId}.png`;
 
 export function newPackId(): string {
   return crypto.randomUUID();
@@ -134,7 +144,8 @@ export async function readPack(id: string): Promise<Pack | null> {
 
 export async function readSources(
   id: string,
-): Promise<{ artwork: Buffer | null; logo: Buffer | null }> {
+  fileSources: Record<string, string> = {},
+): Promise<{ artwork: Buffer | null; logo: Buffer | null; files: Record<string, Buffer> }> {
   const dir = packDir(id);
   const read = async (file: string) => {
     try {
@@ -143,7 +154,48 @@ export async function readSources(
       return null;
     }
   };
-  return { artwork: await read(ARTWORK_FILE), logo: await read(LOGO_FILE) };
+  const files: Record<string, Buffer> = {};
+  for (const [file, imageId] of Object.entries(fileSources)) {
+    if (!IMAGE_ID.test(imageId)) continue;
+    const buffer = await read(imageFile(imageId));
+    if (buffer) files[file] = buffer;
+  }
+  return { artwork: await read(ARTWORK_FILE), logo: await read(LOGO_FILE), files };
+}
+
+/** One stored source: "artwork", "logo" or a per-file image id. null for anything else. */
+export async function readSourceImage(id: string, which: string): Promise<Buffer | null> {
+  const name =
+    which === "artwork" ? ARTWORK_FILE
+    : which === "logo" ? LOGO_FILE
+    : IMAGE_ID.test(which) ? imageFile(which)
+    : null;
+  if (!name) return null;
+  try {
+    return await fs.readFile(path.join(packDir(id), name));
+  } catch {
+    return null;
+  }
+}
+
+/** Stores a per-file image in the pack folder and returns its id. Saving the same bytes twice stores one file. */
+export async function saveImage(id: string, png: Buffer): Promise<string> {
+  const imageId = crypto.createHash("sha256").update(png).digest("hex");
+  const target = path.join(packDir(id), imageFile(imageId));
+  await fs.writeFile(target, png, { flag: "wx" }).catch((err: NodeJS.ErrnoException) => {
+    if (err.code !== "EEXIST") throw err;
+  });
+  return imageId;
+}
+
+/** Deletes per-file images the pack no longer points at. */
+export async function pruneImages(pack: Pack): Promise<void> {
+  const keep = new Set(Object.values(pack.fileSources ?? {}));
+  const dir = packDir(pack.id);
+  for (const name of await fs.readdir(dir)) {
+    const m = /^source-([0-9a-f]{64})\.png$/.exec(name);
+    if (m && !keep.has(m[1])) await fs.rm(path.join(dir, name), { force: true });
+  }
 }
 
 export async function listPacks(): Promise<Pack[]> {
