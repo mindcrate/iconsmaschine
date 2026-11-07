@@ -34,9 +34,9 @@ Read from Tim's machine on 2026-11-07:
 - The database also holds near-duplicate spellings from different vendors, such as "Hi-Hat Closed"
   and "Hihat Closed". Maschine treats them as two separate filters.
 
-Not yet proven: that Maschine picks up a changed `deviceType` on a file it has already scanned.
-The `bankchain` change needed a library rescan, and this one probably does too. Requirement R1 tests
-this before any UI work.
+Proven on 2026-11-07 (R1): a test copy in Voodoo, tagged by the app with `deviceType: "LOOP"`,
+Drums > Kick and Analog, showed after one rescan as a loop (flag 8) with that TYPE and CHARACTER,
+still under MOOSE LIFE / Voodoo.
 
 ## Goals
 
