@@ -6,6 +6,7 @@ import { CalibratePanel } from "@/components/CalibratePanel";
 import { InstallPanel } from "@/components/InstallPanel";
 import { LibraryPanel } from "@/components/LibraryPanel";
 import { CropEditor } from "@/components/CropEditor";
+import { ReplaceImageDialog } from "@/components/ReplaceImageDialog";
 import { KitPicker } from "@/components/KitPicker";
 import { PresetEditor } from "@/components/PresetEditor";
 import { BatchTagPanel } from "@/components/BatchTagPanel";
@@ -66,6 +67,10 @@ export default function Page() {
   const [preview, setPreview] = useState<PreviewFile[] | null>(null);
   const [crops, setCrops] = useState<CropMap>({});
   const [editing, setEditing] = useState<PreviewFile | null>(null);
+  const [fileSources, setFileSources] = useState<Record<string, string>>({});
+  const [replacing, setReplacing] = useState<PreviewFile | null>(null);
+  /** Bumped after a replace so image URLs that did not change their path still reload. */
+  const [sourceVersion, setSourceVersion] = useState(0);
   // Bumped when NI Resources changes, so the kit list re-reads.
   const [kitsToken, setKitsToken] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -125,6 +130,7 @@ export default function Page() {
   function resetOutputs() {
     setPreview(null);
     setPackId(null);
+    setFileSources({});
   }
 
   /** Clears every field so a new instrument can be started from scratch. */
@@ -153,12 +159,29 @@ export default function Page() {
     setLogo(null);
     setUseSeparateLogo(false);
     setCrops({});
+    setFileSources({});
     setEditing(null);
     setError(null);
     resetOutputs();
     void refreshVocab();
     void refreshStatus();
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /** Brings step C and the preview in line with the pack the server just saved. */
+  async function applySavedPack(pack: Pack) {
+    setCrops(pack.crops ?? {});
+    setFileSources(pack.fileSources ?? {});
+    setSourceVersion((v) => v + 1);
+    const v = Date.now();
+    setArtwork({ preview: `/api/packs/${pack.id}/source?which=artwork&v=${v}`, blob: new Blob(), origin: "upload" });
+    // A logo-group replace creates the logo. The next build must keep it, so
+    // step C's logo box and image follow the pack.
+    setUseSeparateLogo(pack.hasLogo);
+    setLogo(pack.hasLogo ? { preview: `/api/packs/${pack.id}/source?which=logo&v=${v}`, blob: new Blob(), origin: "upload" } : null);
+    const { files } = await getJson<{ files: PreviewFile[] }>(`/api/packs/${pack.id}/preview`);
+    setPreview(files);
+    void refreshPacks();
   }
 
   /** Persist a crop and re-render just by rebuilding the pack. */
@@ -268,6 +291,7 @@ export default function Page() {
     setOverlay(pack.overlay ?? DEFAULT_OVERLAY);
     setPackId(pack.id);
     setCrops(pack.crops ?? {});
+    setFileSources(pack.fileSources ?? {});
     setPreview(null);
     setUseSeparateLogo(pack.hasLogo);
     setArtwork({
@@ -871,6 +895,7 @@ export default function Page() {
             <PreviewGrid
               files={preview}
               croppedFiles={new Set(Object.keys(crops))}
+              ownImageFiles={new Set(Object.keys(fileSources))}
               onEdit={setEditing}
             />
             <div style={{ marginTop: 22 }}>
@@ -908,19 +933,42 @@ export default function Page() {
         </section>
       </div>
 
-      {editing && packId && (
+      {editing && packId && !replacing && (
         <CropEditor
           file={editing.file}
           targetW={editing.width}
           targetH={editing.height}
           sourceUrl={`/api/packs/${packId}/source?which=${
-            preview && SPEC_LOGO_FILES.has(editing.file) && useSeparateLogo
-              ? "logo"
-              : "artwork"
-          }`}
+            fileSources[editing.file] ??
+            (preview && SPEC_LOGO_FILES.has(editing.file) && useSeparateLogo ? "logo" : "artwork")
+          }&v=${sourceVersion}`}
           initial={crops[editing.file] ?? null}
           onSave={(c) => saveCrop(editing.file, c)}
           onClose={() => setEditing(null)}
+          ownImage={editing.file in fileSources}
+          onReplace={() => setReplacing(editing)}
+          onUseGroupImage={async () => {
+            const res = await fetch(`/api/packs/${packId}/images?file=${encodeURIComponent(editing.file)}`, { method: "DELETE" });
+            const json = await res.json();
+            if (!res.ok) { setError(json.error ?? "Could not go back to the pack's image."); return; }
+            await applySavedPack(json.pack as Pack).catch((err: Error) => setError(err.message));
+          }}
+        />
+      )}
+      {replacing && packId && (
+        <ReplaceImageDialog
+          packId={packId}
+          file={replacing}
+          fileSources={fileSources}
+          hasLogo={useSeparateLogo}
+          hasOpenAiKey={status?.hasOpenAiKey ?? false}
+          hasSerpKey={status?.hasSerpKey ?? false}
+          searchSeed={[vendor, product].filter(Boolean).join(" ")}
+          onDone={async (pack) => {
+            setReplacing(null);
+            await applySavedPack(pack).catch((err: Error) => setError(err.message));
+          }}
+          onClose={() => setReplacing(null)}
         />
       )}
     </>

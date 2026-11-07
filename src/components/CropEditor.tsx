@@ -20,6 +20,9 @@ export function CropEditor({
   initial,
   onSave,
   onClose,
+  ownImage,
+  onReplace,
+  onUseGroupImage,
 }: {
   file: string;
   targetW: number;
@@ -28,6 +31,10 @@ export function CropEditor({
   initial: Crop | null;
   onSave: (crop: Crop | null) => void;
   onClose: () => void;
+  /** True when this file uses its own image. */
+  ownImage: boolean;
+  onReplace: () => void;
+  onUseGroupImage: () => void;
 }) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -194,6 +201,14 @@ export function CropEditor({
         </p>
 
         <div className="actions">
+          <button className="btn secondary" onClick={onReplace}>
+            Replace image…
+          </button>
+          {ownImage && (
+            <button className="btn ghost" onClick={onUseGroupImage} title="Go back to the pack's artwork or logo for this file">
+              Use the pack&apos;s image
+            </button>
+          )}
           <button
             className="btn"
             onClick={() => onSave(cropFromView(zoom, centre.x, centre.y, size.w, size.h, targetW, targetH))}

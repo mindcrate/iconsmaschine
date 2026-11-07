@@ -6,10 +6,12 @@ import type { PreviewFile } from "@/lib/types";
 export function PreviewGrid({
   files,
   croppedFiles,
+  ownImageFiles,
   onEdit,
 }: {
   files: PreviewFile[];
   croppedFiles: Set<string>;
+  ownImageFiles: Set<string>;
   onEdit: (file: PreviewFile) => void;
 }) {
   return (
@@ -50,6 +52,9 @@ export function PreviewGrid({
           <div className="desc">{f.description}</div>
           {croppedFiles.has(f.file) && (
             <span className="badge-cropped">hand-cropped</span>
+          )}
+          {ownImageFiles.has(f.file) && (
+            <span className="badge-cropped">own image</span>
           )}
           {f.unverified && (
             <span
