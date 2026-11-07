@@ -32,9 +32,11 @@ export async function PUT(request: Request, { params }: Ctx) {
       hasLogo: clearLogo ? false : existing.hasLogo || logo !== null,
     };
 
+    // savePack deletes the logo on `logo: null`, so only send it for a real
+    // upload or an explicit clear. A rebuild with no new logo keeps the stored one.
     const saved = await savePack(pack, {
       ...(artwork ? { artwork } : {}),
-      logo: clearLogo ? null : logo,
+      ...(clearLogo ? { logo: null } : logo ? { logo } : {}),
     });
     return Response.json({ pack: saved });
   } catch (err) {
