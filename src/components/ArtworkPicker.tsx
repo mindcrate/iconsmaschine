@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { dataUrlToBlob, getJson, postJson } from "@/lib/client";
 
 interface ImageHit {
@@ -49,9 +49,30 @@ export function ArtworkPicker({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [query, setQuery] = useState("");
-  const [transparentOnly, setTransparentOnly] = useState(true);
+  const [transparentOnly, setTransparentOnly] = useState(false);
   const [hits, setHits] = useState<ImageHit[] | null>(null);
   const [picking, setPicking] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<ImageHit | null>(null);
+  // A double click also fires two clicks. Wait briefly before picking, so a
+  // double click can open the large view instead.
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+  }, []);
+
+  function onHitClick(hit: ImageHit) {
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    clickTimer.current = setTimeout(() => {
+      clickTimer.current = null;
+      void pick(hit);
+    }, 250);
+  }
+
+  function onHitDoubleClick(hit: ImageHit) {
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    clickTimer.current = null;
+    setViewing(hit);
+  }
 
   async function search() {
     setBusy(true);
@@ -206,9 +227,10 @@ export function ArtworkPicker({
                 <button
                   key={h.original}
                   className="hit"
-                  onClick={() => pick(h)}
+                  onClick={() => onHitClick(h)}
+                  onDoubleClick={() => onHitDoubleClick(h)}
                   disabled={picking !== null}
-                  title={`${h.title}\n${h.source}${h.width ? ` - ${h.width}x${h.height}` : ""}`}
+                  title={`${h.title}\n${h.source}${h.width ? ` - ${h.width}x${h.height}` : ""}\nDouble-click to see it larger`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={h.thumbnail} alt={h.title} />
@@ -225,9 +247,22 @@ export function ArtworkPicker({
           )}
           {hits && hits.length > 0 && (
             <p className="hint" style={{ marginTop: 10 }}>
+              Click an image to use it. Double-click to see it larger first.
               Results come from Google Images. Check you have the right to use an
               image before shipping a pack built from it.
             </p>
+          )}
+          {viewing && (
+            <HitLightbox
+              hit={viewing}
+              busy={picking !== null}
+              onUse={() => {
+                const hit = viewing;
+                setViewing(null);
+                void pick(hit);
+              }}
+              onClose={() => setViewing(null)}
+            />
           )}
         </div>
       ) : tab === "upload" || !allowAi ? (
@@ -336,6 +371,78 @@ export function ArtworkPicker({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** A larger look at one search result before you use it. */
+function HitLightbox({
+  hit,
+  busy,
+  onUse,
+  onClose,
+}: {
+  hit: ImageHit;
+  busy: boolean;
+  onUse: () => void;
+  onClose: () => void;
+}) {
+  // The full image comes from the source site, which may refuse it. Fall back
+  // to the thumbnail rather than show a broken image.
+  const [src, setSrc] = useState(hit.original);
+
+  useEffect(() => {
+    // Capture phase, so Escape closes only this view and not a dialog under it.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopImmediatePropagation();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+
+  return (
+    <div
+      className="lightbox"
+      style={{ zIndex: 60 }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+    >
+      <div className="lightbox-inner hit-view" onClick={(e) => e.stopPropagation()}>
+        <div className="lightbox-head">
+          <code>{hit.title || hit.source}</code>
+          <span className="dims">
+            {hit.width ? `${hit.width} x ${hit.height}` : hit.source}
+          </span>
+          <button className="btn ghost small" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="hit-view-image">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt={hit.title}
+            onError={() => {
+              if (src !== hit.thumbnail) setSrc(hit.thumbnail);
+            }}
+          />
+        </div>
+        {src === hit.thumbnail && hit.thumbnail !== hit.original && (
+          <p className="hint">The source site would not show the full image, so this is the thumbnail.</p>
+        )}
+        <div className="actions">
+          <button className="btn" onClick={onUse} disabled={busy}>
+            Use this image
+          </button>
+          <button className="btn ghost" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

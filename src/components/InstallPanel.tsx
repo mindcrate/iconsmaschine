@@ -25,7 +25,7 @@ export function InstallPanel({
   const [error, setError] = useState<string | null>(null);
   const [removed, setRemoved] = useState<UninstallResult | null>(null);
   const [cleanStale, setCleanStale] = useState(true);
-  const [backup, setBackup] = useState(true);
+  const [backup, setBackup] = useState(false);
   const [retag, setRetag] = useState<SampleTagResult | null>(null);
 
   async function remove() {
