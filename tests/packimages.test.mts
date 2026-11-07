@@ -62,3 +62,76 @@ test("readSourceImage accepts artwork, logo and image ids only", async (t) => {
   assert.equal(await readSourceImage("p1", "../pack.json"), null);
   assert.equal(await readSourceImage("p1", "pack"), null);
 });
+
+test("replacing one file stores its own image and clears only its crop", async (t) => {
+  await tempHome(t);
+  const { replacePackImage } = await import("../src/lib/packimages.ts");
+  await makePack("p1");
+
+  const { pack } = await replacePackImage("p1", { kind: "file", file: "MST_artwork.png" }, await png(0, 0, 255));
+  assert.match(pack.fileSources!["MST_artwork.png"], /^[0-9a-f]{64}$/);
+  assert.equal(pack.crops["MST_artwork.png"], undefined);
+  assert.ok(pack.crops["VB_artwork.png"], "other crops stay");
+});
+
+test("an unknown output file is refused", async (t) => {
+  await tempHome(t);
+  const { replacePackImage } = await import("../src/lib/packimages.ts");
+  await makePack("p1");
+  await assert.rejects(
+    replacePackImage("p1", { kind: "file", file: "../pack.json" }, await png(0, 0, 255)),
+    /Unknown output file/,
+  );
+});
+
+test("replacing the artwork skips files with their own image and clears the others' crops", async (t) => {
+  await tempHome(t);
+  const { replacePackImage } = await import("../src/lib/packimages.ts");
+  const { readSourceImage } = await import("../src/lib/store.ts");
+  await makePack("p1");
+  await replacePackImage("p1", { kind: "file", file: "MST_artwork.png" }, await png(0, 0, 255));
+  const green = await png(0, 255, 0);
+
+  const { pack, skipped } = await replacePackImage("p1", { kind: "artwork" }, green);
+  assert.deepEqual(skipped, ["MST_artwork.png"]);
+  assert.equal(pack.crops["VB_artwork.png"], undefined);
+  assert.ok((await readSourceImage("p1", "artwork"))!.equals(green));
+});
+
+test("replacing the logo group creates the logo and marks the pack as having one", async (t) => {
+  await tempHome(t);
+  const { replacePackImage } = await import("../src/lib/packimages.ts");
+  const { readSourceImage } = await import("../src/lib/store.ts");
+  await makePack("p1");
+
+  const { pack } = await replacePackImage("p1", { kind: "logo" }, await png(0, 255, 0));
+  assert.equal(pack.hasLogo, true);
+  assert.ok(await readSourceImage("p1", "logo"));
+});
+
+test("reverting a file removes its mapping, its crop and the unused image", async (t) => {
+  const home = await tempHome(t);
+  const { replacePackImage, clearFileImage } = await import("../src/lib/packimages.ts");
+  await makePack("p1");
+  await replacePackImage("p1", { kind: "file", file: "MST_artwork.png" }, await png(0, 0, 255));
+
+  const pack = await clearFileImage("p1", "MST_artwork.png");
+  assert.deepEqual(pack.fileSources, {});
+  const left = (await fs.readdir(path.join(home, "packs", "p1"))).filter((f) => /^source-[0-9a-f]{64}\.png$/.test(f));
+  assert.deepEqual(left, []);
+});
+
+test("the library lists each saved image once, across packs", async (t) => {
+  await tempHome(t);
+  const { listLibrary, replacePackImage } = await import("../src/lib/packimages.ts");
+  await makePack("p1", "One");
+  await makePack("p2", "Two");
+  await replacePackImage("p2", { kind: "file", file: "MST_artwork.png" }, await png(0, 0, 255));
+
+  const images = await listLibrary();
+  assert.equal(images.length, 2, "red artwork shared by both packs counts once, plus the blue image");
+  for (const img of images) {
+    assert.match(img.imageId, /^[0-9a-f]{64}$/);
+    assert.ok(img.url.startsWith(`/api/packs/${img.packId}/source?which=`));
+  }
+});
