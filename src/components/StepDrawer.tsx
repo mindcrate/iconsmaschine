@@ -73,7 +73,7 @@ export function StepDrawer({
                 onClick={() => go(v.id)}
                 title={v.state === "locked" ? "Not available yet" : undefined}
               >
-                <span className="mark">{isCurrent && v.state !== "done" ? "●" : MARK[v.state]}</span>
+                <span className="mark">{isCurrent && v.state === "open" ? "●" : MARK[v.state]}</span>
                 <span>
                   {i + 1} {v.label}
                   {v.optional && <span className="opt">optional</span>}

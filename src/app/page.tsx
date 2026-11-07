@@ -12,6 +12,21 @@ import { PresetEditor } from "@/components/PresetEditor";
 import { BatchTagPanel } from "@/components/BatchTagPanel";
 import { SampleTagsPanel } from "@/components/SampleTagsPanel";
 import { OverlayControls } from "@/components/OverlayControls";
+import { StepDrawer } from "@/components/StepDrawer";
+import { StepPanel } from "@/components/StepPanel";
+import {
+  STEPS,
+  blockers,
+  fallbackStep,
+  isStep,
+  nextStep,
+  prevStep,
+  stepViews,
+  toolsFor,
+  type PackFacts,
+  type StepId,
+  type ViewId,
+} from "@/lib/steps";
 import { DEFAULT_OVERLAY, type TextOverlay } from "@/lib/overlayspec";
 import { specsFor } from "@/lib/spec";
 
@@ -37,6 +52,11 @@ export default function Page() {
   const [packs, setPacks] = useState<Pack[]>([]);
 
   const [kitType, setKitType] = useState<KitType>("sample_kit");
+  /** False for a new pack until a kit card is clicked, so only step 1 is open. */
+  const [kitChosen, setKitChosen] = useState(false);
+  const [view, setView] = useState<ViewId>("kit");
+  /** Tools and pages opened so far. They stay mounted, hidden, so their own state survives. */
+  const [visited, setVisited] = useState<Set<ViewId>>(() => new Set(["kit"]));
   const [vendor, setVendor] = useState("");
   const [product, setProduct] = useState("");
   const [fileType, setFileType] = useState("Instruments");
@@ -94,6 +114,46 @@ export default function Page() {
     !vendorError &&
     !needsVendor &&
     !needsCategory;
+
+  const facts: PackFacts = {
+    kitType,
+    kitChosen,
+    nameValid: Boolean(product) && !productError && !vendorError && !needsVendor,
+    browserValid: !needsCategory,
+    hasArtwork: Boolean(artwork),
+    built: Boolean(preview && packId),
+    nestedSampleKit: kitType === "sample_kit" && nestImage && Boolean(vendor.trim()),
+    installed: Boolean(packs.find((p) => p.id === packId)?.installedAs),
+  };
+  const views = stepViews(facts);
+  const tools = kitChosen ? toolsFor(kitType) : [];
+  const labels = Object.fromEntries(STEPS.map((s) => [s.id, s.label])) as Record<StepId, string>;
+  const stepView = (id: StepId) => views.find((v) => v.id === id);
+  const panel = (id: StepId) => ({
+    view: stepView(id),
+    current: view,
+    labels,
+    needs: blockers(views, id),
+    onGo: (to: StepId) => go(to),
+  });
+
+  function go(to: ViewId) {
+    setView(to);
+    setVisited((prev) => (prev.has(to) ? prev : new Set(prev).add(to)));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // A kit type or nesting change can hide the current step or tool. Move to
+  // the nearest open step before it rather than leave a blank page.
+  const shownIds = views.map((v) => v.id).join(",") + "|" + tools.map((t) => t.id).join(",");
+  useEffect(() => {
+    if (isStep(view)) {
+      if (!views.some((v) => v.id === view)) setView(fallbackStep(views, view));
+    } else if ((view === "presets" || view === "batch") && !tools.some((t) => t.id === view)) {
+      setView(fallbackStep(views, "install"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownIds, view]);
 
   const categoryOptions = vocab?.byFileType[fileType] ?? [];
   const fileTypeOptions = vocab ? Object.keys(vocab.byFileType) : ["Instruments", "Effects"];
@@ -165,9 +225,10 @@ export default function Page() {
     setEditing(null);
     setError(null);
     resetOutputs();
+    setKitChosen(false);
     void refreshVocab();
     void refreshStatus();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    go("kit");
   }
 
   /** Brings step C and the preview in line with the pack the server just saved. */
@@ -273,7 +334,8 @@ export default function Page() {
     }
   }
 
-  function openPack(pack: Pack) {
+  async function openPack(pack: Pack) {
+    setKitChosen(true);
     setKitType(pack.kitType);
     setVendor(pack.vendor);
     setProduct(pack.product);
@@ -295,6 +357,7 @@ export default function Page() {
     setCrops(pack.crops ?? {});
     setFileSources(pack.fileSources ?? {});
     setPreview(null);
+    setError(null);
     setUseSeparateLogo(pack.hasLogo);
     setArtwork({
       preview: `/api/packs/${pack.id}/source?which=artwork`,
@@ -310,7 +373,16 @@ export default function Page() {
           }
         : null,
     );
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // A saved pack's images are already built, so open it ready to review or
+    // install rather than make Tim build again before anything unlocks.
+    try {
+      const { files } = await getJson<{ files: PreviewFile[] }>(`/api/packs/${pack.id}/preview`);
+      setPreview(files);
+      go(pack.installedAs ? "install" : "review");
+    } catch (err) {
+      setError((err as Error).message);
+      go("review");
+    }
   }
 
   async function removePack(pack: Pack) {
@@ -323,53 +395,27 @@ export default function Page() {
 
   return (
     <>
-      <header className="top">
-        <div className="inner">
-          <h1>
-            icon<span>maschine</span>
-          </h1>
-          <span className="tag">
-            Custom browser images for third-party Maschine content
-          </span>
-          <div className="status-bar">
-            {status && (
-              <>
-                <span className={status.rootWritable ? "chip ok" : "chip warn"}>
-                  {status.rootWritable
-                    ? "NI Resources writable"
-                    : status.rootExists
-                      ? "NI Resources read-only"
-                      : "NI Resources not found"}
-                </span>
-                <span className={status.hasOpenAiKey ? "chip ok" : "chip"}>
-                  {status.hasOpenAiKey ? "OpenAI key loaded" : "no OpenAI key"}
-                </span>
-                <span className={status.hasSerpKey ? "chip ok" : "chip"}>
-                  {status.hasSerpKey ? "SerpAPI key loaded" : "no SerpAPI key"}
-                </span>
-                <span className={status.distDbExists ? "chip ok" : "chip warn"}>
-                  {status.distDbExists
-                    ? "dist_database found"
-                    : "no dist_database yet"}
-                </span>
-              </>
-            )}
+      <div className="app">
+      <StepDrawer
+        views={views}
+        tools={tools}
+        current={view}
+        onGo={go}
+        onNewPack={clearForm}
+        status={status}
+        packCount={packs.length}
+        kitLabel={kitInfo.label}
+      />
+      <main>
+        {isStep(view) && (
+          <div className="step-count">
+            Step {views.findIndex((v) => v.id === view) + 1} of {views.length}
           </div>
-        </div>
-      </header>
-
-      <div className="shell">
+        )}
+        {error && <div className="note bad">{error}</div>}
+        <StepPanel {...panel("kit")}>
         <section className="step">
-          <h2>
-            <span className="letter">A</span>Choose your kit type
-            <button
-              className="btn ghost small"
-              style={{ marginLeft: "auto" }}
-              onClick={clearForm}
-            >
-              Clear &amp; start new
-            </button>
-          </h2>
+          <h2>Choose your kit type</h2>
           <p className="hint">
             This decides the folder shape the pack installs into. Picking one
             also re-scans for newly installed plugins.
@@ -379,9 +425,10 @@ export default function Page() {
               <button
                 key={k.id}
                 className="kit-card"
-                aria-pressed={kitType === k.id}
+                aria-pressed={kitChosen && kitType === k.id}
                 onClick={() => {
                   setKitType(k.id);
+                  setKitChosen(true);
                   resetOutputs();
                   // Re-scan on every pick: a plugin installed since the page
                   // loaded should appear without a manual reload.
@@ -395,10 +442,12 @@ export default function Page() {
             ))}
           </div>
         </section>
+        </StepPanel>
 
+        <StepPanel {...panel("name")}>
         <section className="step">
           <h2>
-            <span className="letter">B</span>Name it
+            Name it
           </h2>
           <p className="hint">
             Names must match <strong>exactly</strong> what Maschine shows. Folders
@@ -587,11 +636,12 @@ export default function Page() {
             </div>
           )}
         </section>
+        </StepPanel>
 
-        {kitInfo.usesDistDb && (
+        <StepPanel {...panel("browser")}>
           <section className="step">
             <h2>
-              <span className="letter">B2</span>Browser entry
+              Browser entry
             </h2>
             <p className="hint">
               This is the <code>dist_database</code> half - it drives the name,
@@ -676,11 +726,12 @@ export default function Page() {
               </div>
             </div>
           </section>
-        )}
+        </StepPanel>
 
+        <StepPanel {...panel("artwork")}>
         <section className="step">
           <h2>
-            <span className="letter">C</span>Add your artwork
+            Add your artwork
           </h2>
           <p className="hint">
             One image drives every file. Artwork files are cropped to fill; logo files
@@ -799,7 +850,9 @@ export default function Page() {
             </div>
           </div>
         </section>
+        </StepPanel>
 
+        <StepPanel {...panel("text")}>
         <OverlayControls
           value={overlay}
           onChange={(next) => {
@@ -809,10 +862,12 @@ export default function Page() {
           files={specsFor({ nks2 })}
           previews={preview}
         />
+        </StepPanel>
 
+        <StepPanel {...panel("details")}>
         <section className="step">
           <h2>
-            <span className="letter">D</span>Pack details
+            Pack details
           </h2>
           <div className="row">
             <div className="field">
@@ -861,13 +916,25 @@ export default function Page() {
             </label>
           </div>
 
+        </section>
+
+        </StepPanel>
+
+        <StepPanel {...panel("review")}>
+          <section className="step">
+            <h2>Review and build</h2>
+            <p className="hint">
+              {preview && packId
+                ? `${preview.length} files ready. Click a file to adjust its crop or replace its image, then go on to install.`
+                : "Build the images from the steps so far. Nothing is written to NI Resources yet."}
+            </p>
           <div className="actions">
             <button className="btn" onClick={build} disabled={!canBuild || busy}>
-              {busy ? <><span className="spinner" /> Building…</> : "Build the images"}
+              {busy ? <><span className="spinner" /> Building…</> : preview && packId ? "Rebuild the images" : "Build the images"}
             </button>
             {!artwork && (
               <span style={{ color: "var(--muted)", fontSize: 12 }}>
-                Add artwork in step C first.
+                Add artwork in the Artwork step first.
               </span>
             )}
             {artwork && needsVendor && (
@@ -882,38 +949,48 @@ export default function Page() {
             )}
           </div>
 
-          {error && <div className="note bad">{error}</div>}
-        </section>
+            {preview && packId && (
+              <div style={{ marginTop: 18 }}>
+                <PreviewGrid
+                  files={preview}
+                  croppedFiles={new Set(Object.keys(crops))}
+                  ownImageFiles={new Set(Object.keys(fileSources))}
+                  onEdit={setEditing}
+                />
+              </div>
+            )}
+          </section>
+        </StepPanel>
 
-        {preview && packId && (
-          <section className="step">
-            <h2>
-              <span className="letter">E</span>Review and install
-            </h2>
-            <p className="hint">
-              {preview.length} files ready. Check the crops, then install straight into
-              NI Resources.
-            </p>
-            <PreviewGrid
-              files={preview}
-              croppedFiles={new Set(Object.keys(crops))}
-              ownImageFiles={new Set(Object.keys(fileSources))}
-              onEdit={setEditing}
-            />
-            <div style={{ marginTop: 22 }}>
-              {kitType === "sample_kit" && nestImage && vendor.trim() && (
-                <SampleTagsPanel packId={packId} onSaved={() => setRulesVersion((n) => n + 1)} />
-              )}
+        {/* Both need a saved pack. While there is none the steps are locked,
+            and StepPanel shows the locked notice instead of these. */}
+        <StepPanel {...panel("sampletags")}>
+          {packId && (
+            <section className="step">
+              <h2>Sample tags</h2>
+              <SampleTagsPanel packId={packId} onSaved={() => setRulesVersion((n) => n + 1)} />
+            </section>
+          )}
+        </StepPanel>
+
+        <StepPanel {...panel("install")}>
+          {packId && (
+            <section className="step">
+              <h2>Install</h2>
               <InstallPanel
                 packId={packId}
-                onChanged={() => setKitsToken((n) => n + 1)}
+                onChanged={() => {
+                  setKitsToken((n) => n + 1);
+                  void refreshPacks();
+                }}
                 rulesVersion={rulesVersion}
               />
-            </div>
-          </section>
-        )}
+            </section>
+          )}
+        </StepPanel>
 
-        <section className="step">
+        {visited.has("packs") && (
+        <section className="step" hidden={view !== "packs"}>
           <h2>Your packs</h2>
           <LibraryPanel
             packs={packs}
@@ -922,21 +999,31 @@ export default function Page() {
             onDelete={removePack}
           />
         </section>
+        )}
 
-        <section className="step">
-          <h2>Preset tags (GENERAL, TYPES, CHARACTERS)</h2>
-          <PresetEditor />
-        </section>
+        {visited.has("presets") && tools.some((t) => t.id === "presets") && (
+          <section className="step" hidden={view !== "presets"}>
+            <h2>Preset tags (GENERAL, TYPES, CHARACTERS)</h2>
+            <PresetEditor />
+          </section>
+        )}
 
-        <section className="step">
-          <h2>Batch preset tags</h2>
-          <BatchTagPanel />
-        </section>
+        {visited.has("batch") && tools.some((t) => t.id === "batch") && (
+          <section className="step" hidden={view !== "batch"}>
+            <h2>Batch preset tags</h2>
+            <BatchTagPanel />
+          </section>
+        )}
 
-        <section className="step">
-          <h2>Calibrate against your installed libraries</h2>
-          <CalibratePanel onDone={refreshStatus} />
-        </section>
+        {visited.has("calibrate") && (
+          <section className="step" hidden={view !== "calibrate"}>
+            <h2>Calibrate against your installed libraries</h2>
+            <CalibratePanel onDone={refreshStatus} />
+          </section>
+        )}
+
+        {isStep(view) && <StepNav views={views} current={view} onGo={go} />}
+      </main>
       </div>
 
       {editing && packId && !replacing && (
@@ -978,5 +1065,43 @@ export default function Page() {
         />
       )}
     </>
+  );
+}
+
+/** Why Next is off on an unfinished required step. */
+const UNFINISHED: Partial<Record<StepId, string>> = {
+  kit: "Pick a kit type first.",
+  name: "Enter a valid name first.",
+  browser: "Pick at least one category first.",
+  artwork: "Add an artwork image first.",
+  review: "Build the images first.",
+};
+
+function StepNav({
+  views,
+  current,
+  onGo,
+}: {
+  views: ReturnType<typeof stepViews>;
+  current: StepId;
+  onGo: (id: StepId) => void;
+}) {
+  const here = views.find((v) => v.id === current);
+  if (!here || here.state === "locked") return null;
+  const back = prevStep(views, current);
+  const next = nextStep(views, current);
+  const isLast = views[views.length - 1]?.id === current;
+  return (
+    <div className="step-nav">
+      <button type="button" className="btn ghost" onClick={() => back && onGo(back)} disabled={!back}>
+        Back
+      </button>
+      {!isLast && (
+        <button type="button" className="btn" onClick={() => next && onGo(next)} disabled={!next}>
+          Next step
+        </button>
+      )}
+      {!isLast && !next && <span className="why">{UNFINISHED[current]}</span>}
+    </div>
   );
 }

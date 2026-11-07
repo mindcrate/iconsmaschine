@@ -62,7 +62,7 @@ export function OverlayControls({
   return (
     <section className="step">
       <h2>
-        <span className="letter">T</span> Text on the logos
+        Text on the logos
       </h2>
       <p className="hint">
         Burns the kit name across the logo and banner files, with the artwork
