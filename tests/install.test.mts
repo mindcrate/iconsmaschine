@@ -512,13 +512,14 @@ async function sampleLibrary(base: string, names: string[]) {
   const targets = [];
   for (const n of names) {
     const p = path.join(dir, n);
+    await fs.mkdir(path.dirname(p), { recursive: true });
     await fs.writeFile(p, wav);
-    targets.push({ path: p, bankchain: ["808 COLLECTION"] });
+    targets.push({ path: p, root: dir, bankchain: ["808 COLLECTION"] });
   }
   return { dir, wav, audio, targets };
 }
 
-const packInput = (samples: { path: string; bankchain: string[] }[]) => ({
+const packInput = (samples: { path: string; root: string; bankchain: string[] }[]) => ({
   product: "808 COLLECTION",
   vendor: "tim moose",
   files,
@@ -670,4 +671,68 @@ test("re-applying tags writes no artwork", async (t) => {
   assert.equal(result!.tagged, 1);
   assert.equal(result!.backupDir, null);
   assert.deepEqual(await fs.readdir(image), []);
+});
+
+const RULES = {
+  rules: { Kicks: { types: [["Drums", "Kick"]] }, Loops: { kind: "loop" as const } },
+  replaceExisting: false,
+  matchFileNames: false,
+};
+
+test("install writes each folder's rule into its files", async (t) => {
+  const { base } = await tempRoot(t);
+  const { install } = await import("../src/lib/install.ts");
+  const { readSoundInfo } = await import("../src/lib/wavtag.ts");
+  const lib = await sampleLibrary(base, ["Kicks/k1.wav", "Loops/l1.wav", "other.wav"]);
+
+  const result = await install({ ...packInput(lib.targets), sampleTags: RULES });
+  assert.equal(result.samples!.tagged, 3);
+
+  const [kick, loop, other] = await Promise.all(
+    lib.targets.map(async (tgt) => readSoundInfo(await fs.readFile(tgt.path))!),
+  );
+  assert.deepEqual(kick.types, [["Drums", "Kick"]]);
+  assert.equal(kick.deviceType, undefined, "Kicks sets no kind");
+  assert.equal(loop.deviceType, "LOOP");
+  assert.equal(other.types, undefined, "a file no rule covers gets only the vendor tag");
+  assert.equal(other.vendor, "tim moose");
+});
+
+test("the plan counts, per folder, files to change and files keeping their own tags", async (t) => {
+  const { base } = await tempRoot(t);
+  const { planInstall } = await import("../src/lib/install.ts");
+  const { tagSample } = await import("../src/lib/wavtag.ts");
+  const lib = await sampleLibrary(base, ["Kicks/k1.wav", "Kicks/k2.wav"]);
+  const own = tagSample(lib.wav, {
+    vendor: "tim moose",
+    bankchain: ["808 COLLECTION"],
+    name: "k2",
+    fields: { types: [["Drums", "Snare"]], replace: true },
+  }) as { kind: "tagged"; buffer: Buffer };
+  await fs.writeFile(lib.targets[1].path, own.buffer);
+  const before = await Promise.all(lib.targets.map((tgt) => fs.readFile(tgt.path)));
+
+  const plan = await planInstall({
+    ...packInput(lib.targets),
+    sampleTags: RULES,
+    nonWav: [{ path: path.join(lib.dir, "x.aif"), root: lib.dir, bankchain: [] }],
+  });
+  assert.deepEqual(plan.sampleTags, {
+    folders: [{ folder: "Kicks", files: 2, change: 1, keep: 1 }],
+    nonWav: 1,
+  });
+  for (const [i, tgt] of lib.targets.entries()) {
+    assert.ok((await fs.readFile(tgt.path)).equals(before[i]), "a plan must not touch a WAV");
+  }
+});
+
+test("re-apply tags only writes the rules too", async (t) => {
+  const { base } = await tempRoot(t);
+  const { retagSamples } = await import("../src/lib/install.ts");
+  const { readSoundInfo } = await import("../src/lib/wavtag.ts");
+  const lib = await sampleLibrary(base, ["Loops/l1.wav"]);
+
+  const result = await retagSamples({ ...packInput(lib.targets), sampleTags: RULES });
+  assert.equal(result!.tagged, 1);
+  assert.equal(readSoundInfo(await fs.readFile(lib.targets[0].path))!.deviceType, "LOOP");
 });

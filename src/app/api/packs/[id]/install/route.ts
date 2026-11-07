@@ -41,6 +41,8 @@ export async function POST(request: Request, { params }: Ctx) {
       distDb,
       imageVendor,
       samples: library?.samples ?? null,
+      sampleTags: pack.sampleTags,
+      nonWav: library?.nonWav ?? null,
       previous: pack.installedAs,
     };
 

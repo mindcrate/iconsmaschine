@@ -5,7 +5,9 @@ import { metaBuffer } from "./nimeta";
 import { buildDistDbFiles, folderName, type DistDbInput } from "./distdb";
 import type { RenderedFile } from "./render";
 import type { SampleTarget } from "./kits";
-import { tagSample } from "./wavtag";
+import { folderOf, resolveFields, type SampleTags } from "./sampletags";
+import { readSoundInfoAt } from "./wavfile";
+import { keptKeys, mergeSoundInfo, sameMap, tagSample, type SampleTag } from "./wavtag";
 
 export interface PlannedWrite {
   /** Which NI Resources tree this file lands in. */
@@ -33,6 +35,22 @@ export interface InstallPlan {
   samples: { count: number; folders: string[]; bytes: number } | null;
   /** Where originals would be copied, and the free space there. null when not backing up. */
   backup: { dir: string; freeBytes: number } | null;
+  /** What the sample tag rules would do, per library folder. null when there are no samples. */
+  sampleTags: SampleTagPlan | null;
+}
+
+export interface SampleTagPlan {
+  folders: {
+    /** Relative to the library root. "" is the root itself. */
+    folder: string;
+    files: number;
+    /** Files whose tag would be rewritten. */
+    change: number;
+    /** Files that keep a TYPE, CHARACTER or kind of their own instead of the rule's. */
+    keep: number;
+  }[];
+  /** Audio files in the library that are not WAV, so get no tags. */
+  nonWav: number;
 }
 
 export interface InstallInput {
@@ -58,6 +76,10 @@ export interface InstallInput {
    * each file's tag, which is what moves the library out of "Other".
    */
   samples?: SampleTarget[] | null;
+  /** TYPES, CHARACTERS and one-shot or loop rules for those samples. */
+  sampleTags?: SampleTags | null;
+  /** The library's audio files that are not WAV. Only counted, never written. */
+  nonWav?: SampleTarget[] | null;
   /**
    * Where this pack was last installed, when that differs from where it would
    * go now. Renaming moves the install path, and without this the previous
@@ -222,6 +244,9 @@ export async function planInstall(
 
   let bytes = 0;
   for (const t of samples ?? []) bytes += (await statOrNull(t.path))?.bytes ?? 0;
+  const sampleTags = samples
+    ? await planSampleTags(samples, input.imageVendor!, input.sampleTags ?? null, input.nonWav?.length ?? 0)
+    : null;
 
   const backup =
     samples && samples.length > 0 && opts.backupDir
@@ -251,6 +276,40 @@ export async function planInstall(
         }
       : null,
     backup,
+    sampleTags,
+  };
+}
+
+function sampleTagFor(target: SampleTarget, vendor: string, rules: SampleTags | null): SampleTag {
+  return {
+    vendor,
+    bankchain: target.bankchain,
+    name: path.basename(target.path, path.extname(target.path)),
+    fields: (rules && resolveFields(target, rules)) ?? undefined,
+  };
+}
+
+/** Reads only each file's tag chunk, never its audio, so a large library plans quickly. */
+async function planSampleTags(
+  targets: SampleTarget[],
+  vendor: string,
+  rules: SampleTags | null,
+  nonWav: number,
+): Promise<SampleTagPlan> {
+  const byFolder = new Map<string, SampleTagPlan["folders"][number]>();
+  for (const target of targets) {
+    const folder = folderOf(target);
+    const row = byFolder.get(folder) ?? { folder, files: 0, change: 0, keep: 0 };
+    byFolder.set(folder, row);
+    row.files++;
+    const tag = sampleTagFor(target, vendor, rules);
+    const current = await readSoundInfoAt(target.path).catch(() => null);
+    if (!current || !sameMap(current, mergeSoundInfo(current, tag))) row.change++;
+    if (keptKeys(current, tag.fields).length > 0) row.keep++;
+  }
+  return {
+    folders: [...byFolder.values()].sort((a, b) => a.folder.localeCompare(b.folder)),
+    nonWav,
   };
 }
 
@@ -337,6 +396,7 @@ async function tagSamples(
   targets: SampleTarget[],
   vendor: string,
   backupDir: string | null,
+  rules: SampleTags | null,
 ): Promise<SampleTagResult> {
   const result: SampleTagResult = { tagged: 0, unchanged: 0, skipped: [], backedUp: 0, backupDir };
 
@@ -344,11 +404,7 @@ async function tagSamples(
     const temp = path.join(path.dirname(target.path), `.${path.basename(target.path)}.iconmaschine-tmp`);
     try {
       const wav = await fs.readFile(target.path);
-      const outcome = tagSample(wav, {
-        vendor,
-        bankchain: target.bankchain,
-        name: path.basename(target.path, path.extname(target.path)),
-      });
+      const outcome = tagSample(wav, sampleTagFor(target, vendor, rules));
       if (outcome.kind === "refused") {
         result.skipped.push({ file: target.path, reason: outcome.reason });
       } else if (outcome.kind === "unchanged") {
@@ -397,7 +453,9 @@ export async function retagSamples(
   opts: { backupDir?: string | null } = {},
 ): Promise<SampleTagResult | null> {
   const { samples } = buildFileSet(input);
-  return samples ? tagSamples(samples, input.imageVendor!, opts.backupDir ?? null) : null;
+  return samples
+    ? tagSamples(samples, input.imageVendor!, opts.backupDir ?? null, input.sampleTags ?? null)
+    : null;
 }
 
 export async function install(
@@ -448,7 +506,7 @@ export async function install(
   }
 
   const sampleResult = samples
-    ? await tagSamples(samples, input.imageVendor!, opts.backupDir ?? null)
+    ? await tagSamples(samples, input.imageVendor!, opts.backupDir ?? null, input.sampleTags ?? null)
     : null;
 
   return { imageDir, distDbDir, written, cleaned, samples: sampleResult };
