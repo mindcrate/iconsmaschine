@@ -196,3 +196,52 @@ test("bytes after the RIFF are kept", () => {
   const out = tagged(input);
   assert.equal(out.subarray(out.length - 4).toString(), "tail");
 });
+
+const FIELDS = { types: [["Drums", "Kick"]], modes: ["Analog"], deviceType: "LOOP" as const };
+
+function buffer(out: ReturnType<typeof tagSample>): Buffer {
+  assert.equal(out.kind, "tagged", out.kind === "refused" ? out.reason : "");
+  return (out as { kind: "tagged"; buffer: Buffer }).buffer;
+}
+
+test("types, modes and deviceType are written next to the vendor", () => {
+  const info = readSoundInfo(buffer(tagSample(realWav(), { ...TAG, fields: { ...FIELDS, replace: false } })))!;
+  assert.deepEqual(info.types, [["Drums", "Kick"]]);
+  assert.deepEqual(info.modes, ["Analog"]);
+  assert.equal(info.deviceType, "LOOP");
+  assert.equal(info.vendor, "tim moose");
+});
+
+test("existing types are kept unless replace is set", () => {
+  const input = realWav({ map: nksMap({ types: [["Drums", "Snare"]], bankchain: ["808 COLLECTION"] }) });
+  assert.deepEqual(tagSample(input, { ...TAG, fields: { types: [["Drums", "Kick"]], replace: false } }), {
+    kind: "unchanged",
+  });
+  const replaced = buffer(tagSample(input, { ...TAG, fields: { types: [["Drums", "Kick"]], replace: true } }));
+  assert.deepEqual(readSoundInfo(replaced)!.types, [["Drums", "Kick"]]);
+});
+
+test("an empty types list counts as no types, so it is filled", () => {
+  const input = realWav({ map: nksMap({ types: [], bankchain: ["808 COLLECTION"] }) });
+  const out = buffer(tagSample(input, { ...TAG, fields: { types: [["Drums", "Kick"]], replace: false } }));
+  assert.deepEqual(readSoundInfo(out)!.types, [["Drums", "Kick"]]);
+});
+
+test("tagging twice with fields reports unchanged", () => {
+  const tag = { ...TAG, fields: { ...FIELDS, replace: true } };
+  assert.deepEqual(tagSample(buffer(tagSample(realWav(), tag)), tag), { kind: "unchanged" });
+});
+
+test("fields the rule leaves out are not touched", () => {
+  const input = realWav({ map: nksMap({ modes: ["Vinyl"], deviceType: "ONESHOT" }) });
+  const info = readSoundInfo(buffer(tagSample(input, { ...TAG, fields: { types: [["Bass"]], replace: true } })))!;
+  assert.deepEqual(info.modes, ["Vinyl"]);
+  assert.equal(info.deviceType, "ONESHOT");
+});
+
+test("a new tag on an untagged file carries the fields", () => {
+  const input = wav([{ id: "fmt ", data: FMT }, { id: "data", data: AUDIO }]);
+  const info = readSoundInfo(buffer(tagSample(input, { ...TAG, fields: { ...FIELDS, replace: false } })))!;
+  assert.equal(info.deviceType, "LOOP");
+  assert.deepEqual(info.bankchain, ["808 COLLECTION"]);
+});

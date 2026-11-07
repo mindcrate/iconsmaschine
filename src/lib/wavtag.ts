@@ -39,10 +39,20 @@ export interface Id3Tag {
   size: number;
 }
 
+export interface SampleFields {
+  types?: string[][];
+  /** CHARACTERS. WAVs store them under `modes`, not `characters` as presets do. */
+  modes?: string[];
+  deviceType?: "ONESHOT" | "LOOP";
+  /** Overwrite values the file already has. Off: fill only the empty ones. */
+  replace: boolean;
+}
+
 export interface SampleTag {
   vendor: string;
   bankchain: string[];
   name: string;
+  fields?: SampleFields;
 }
 
 export type TagOutcome =
@@ -180,8 +190,52 @@ function newNksFrame(map: Record<string, MsgValue>): Id3Frame {
   return { id: "GEOB", flags: Buffer.alloc(2), body: Buffer.concat([prefix, encodeSorted(map)]) };
 }
 
-function sameBank(a: MsgValue | undefined, b: string[]): boolean {
-  return Array.isArray(a) && a.length === b.length && a.every((x, i) => x === b[i]);
+function isEmpty(v: MsgValue | undefined): boolean {
+  return v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+}
+
+function sameValue(a: MsgValue | undefined, b: MsgValue | undefined): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export function sameMap(a: Record<string, MsgValue>, b: Record<string, MsgValue>): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...keys].every((k) => sameValue(a[k], b[k]));
+}
+
+function asked(fields: SampleFields): [string, MsgValue | undefined][] {
+  return [
+    ["types", fields.types],
+    ["modes", fields.modes],
+    ["deviceType", fields.deviceType],
+  ];
+}
+
+/** The map a tag turns `current` into. `current` null means the file has no map yet. */
+export function mergeSoundInfo(
+  current: Record<string, MsgValue> | null,
+  tag: SampleTag,
+): Record<string, MsgValue> {
+  const next = current
+    ? { ...current, vendor: tag.vendor, bankchain: tag.bankchain }
+    : newMap(tag);
+  const f = tag.fields;
+  if (!f) return next;
+  for (const [key, value] of asked(f)) {
+    if (value !== undefined && (f.replace || isEmpty(next[key]))) next[key] = value;
+  }
+  return next;
+}
+
+/** Keys the fields ask to change that the file keeps, because it has its own value and replace is off. */
+export function keptKeys(
+  current: Record<string, MsgValue> | null,
+  fields: SampleFields | undefined,
+): string[] {
+  if (!current || !fields || fields.replace) return [];
+  return asked(fields)
+    .filter(([k, v]) => v !== undefined && !isEmpty(current[k]) && !sameValue(current[k], v))
+    .map(([k]) => k);
 }
 
 /** The nks.soundinfo map of a WAV, or null when it has none or cannot be read. */
@@ -204,8 +258,8 @@ function sameChunks(a: Chunk[], b: Chunk[]): boolean {
 }
 
 /**
- * Writes `vendor` and `bankchain` into a WAV's NI sound info. Pure: the caller
- * does the file I/O.
+ * Writes `vendor`, `bankchain` and any `fields` into a WAV's NI sound info.
+ * Pure: the caller does the file I/O.
  */
 export function tagSample(wav: Buffer, tag: SampleTag): TagOutcome {
   try {
@@ -227,6 +281,7 @@ function tagOrThrow(wav: Buffer, tag: SampleTag): TagOutcome {
   const existing = at >= 0 ? parseId3(riff.chunks[at].data) : null;
 
   let frames: Id3Frame[];
+  let expected: Record<string, MsgValue>;
   if (existing) {
     const i = existing.frames.findIndex(isNksFrame);
     if (i >= 0) {
@@ -235,20 +290,18 @@ function tagOrThrow(wav: Buffer, tag: SampleTag): TagOutcome {
         throw new WavTagError("the sound info frame uses flags");
       }
       const map = decodeMap(frame);
-      if (map.vendor === tag.vendor && sameBank(map.bankchain, tag.bankchain)) {
-        return { kind: "unchanged" };
-      }
+      expected = mergeSoundInfo(map, tag);
+      if (sameMap(map, expected)) return { kind: "unchanged" };
       const geob = parseGeob(frame.body)!;
-      const body = Buffer.concat([
-        frame.body.subarray(0, geob.prefixLength),
-        encodeSorted({ ...map, vendor: tag.vendor, bankchain: tag.bankchain }),
-      ]);
+      const body = Buffer.concat([frame.body.subarray(0, geob.prefixLength), encodeSorted(expected)]);
       frames = existing.frames.map((f, j) => (j === i ? { ...f, body } : f));
     } else {
-      frames = [newNksFrame(newMap(tag)), ...existing.frames];
+      expected = mergeSoundInfo(null, tag);
+      frames = [newNksFrame(expected), ...existing.frames];
     }
   } else {
-    frames = [newNksFrame(newMap(tag))];
+    expected = mergeSoundInfo(null, tag);
+    frames = [newNksFrame(expected)];
   }
 
   const data = serialiseId3({ frames, size: existing ? existing.size : 0 });
@@ -263,7 +316,7 @@ function tagOrThrow(wav: Buffer, tag: SampleTag): TagOutcome {
     throw new WavTagError("the audio would have changed, so the file was left alone");
   }
   const written = readSoundInfo(buffer);
-  if (!written || written.vendor !== tag.vendor || !sameBank(written.bankchain, tag.bankchain)) {
+  if (!written || !sameMap(written, expected)) {
     throw new WavTagError("the new tag did not read back correctly");
   }
   return { kind: "tagged", buffer };
