@@ -1,6 +1,6 @@
 # PRD: TYPES, CHARACTERS and one-shot or loop for sample kits
 
-Status: draft for Tim, 2026-11-07.
+Status: approved by Tim, 2026-11-07.
 
 ## Problem statement
 
