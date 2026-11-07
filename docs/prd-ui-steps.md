@@ -1,6 +1,6 @@
 # PRD: A step-driven layout with a side drawer
 
-Status: draft for Tim, 2026-11-07.
+Status: approved by Tim, 2026-11-07.
 
 ## Problem statement
 
