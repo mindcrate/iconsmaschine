@@ -43,3 +43,8 @@ test("folders are suggested from their own name and their parents' loop words", 
   assert.deepEqual(s.Misc, { kind: "loop" });
   assert.equal(s.Stuff, undefined);
 });
+
+test("break marks a folder of loops but not a single file", () => {
+  assert.equal(suggestFromName("Decap_break").kind, undefined);
+  assert.deepEqual(suggestFolders([{ folder: "ALL BREAKS", files: ["A - P1_001"] }])["ALL BREAKS"], { kind: "loop" });
+});

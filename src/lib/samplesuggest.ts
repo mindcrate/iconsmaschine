@@ -68,7 +68,10 @@ export function suggestFolders(
     const segments = folder.split("/");
     const rule: SampleRule = {};
     const own = suggestFromName(segments[segments.length - 1], known);
-    if (segments.some((s) => suggestFromName(s).kind === "loop")) rule.kind = "loop";
+    // "Breaks" names a folder of drum loops, but a file called "break" is as likely a shout.
+    const loopFolder = (s: string) =>
+      suggestFromName(s).kind === "loop" || keywords.loopFolder.some((w) => hasWord(tokens(s), w));
+    if (segments.some(loopFolder)) rule.kind = "loop";
     else if (own.kind) rule.kind = own.kind;
     else if (files.length > 0 && files.filter(hasTempo).length / files.length >= LOOP_SHARE) rule.kind = "loop";
     if (own.types) rule.types = own.types;

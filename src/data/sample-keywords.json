@@ -1,30 +1,265 @@
 {
   "types": [
-    { "words": ["open+hat", "open+hihat", "open+hh", "ohh", "oh", "openhat"], "type": ["Drums", "Hi-Hat Open"] },
-    { "words": ["closed+hat", "closed+hihat", "closed+hh", "chh", "closedhat"], "type": ["Drums", "Hi-Hat Closed"] },
-    { "words": ["rim", "rimshot"], "type": ["Drums", "Snare Rimshot"] },
-    { "words": ["kick", "kik", "kck", "bd", "bassdrum"], "type": ["Drums", "Kick"] },
-    { "words": ["snare", "snr", "sd"], "type": ["Drums", "Snare"] },
-    { "words": ["clap", "clp"], "type": ["Drums", "Clap"] },
-    { "words": ["hat", "hh", "hihat", "hi+hat"], "type": ["Drums", "Hi-Hat"] },
-    { "words": ["crash"], "type": ["Drums", "Crash Cymbal"] },
-    { "words": ["ride"], "type": ["Drums", "Ride Cymbal"] },
-    { "words": ["cymbal"], "type": ["Drums", "Cymbal"] },
-    { "words": ["tom"], "type": ["Drums", "Tom"] },
-    { "words": ["shaker"], "type": ["Percussion", "Shaker"] },
-    { "words": ["tambourine", "tamb"], "type": ["Percussion", "Tambourine"] },
-    { "words": ["conga"], "type": ["Percussion", "Conga"] },
-    { "words": ["cowbell"], "type": ["Percussion", "Cowbell"] },
-    { "words": ["perc", "percussion"], "type": ["Percussion"] },
-    { "words": ["808", "bass", "sub"], "type": ["Bass"] },
-    { "words": ["vox", "vocal", "voice", "acapella", "shout", "chant"], "type": ["Vocal"] },
-    { "words": ["riser", "sweep", "uplifter", "downlifter"], "type": ["Sweep & Swell"] },
-    { "words": ["fx", "sfx"], "type": ["Sound Effects"] },
-    { "words": ["piano", "keys", "rhodes"], "type": ["Piano / Keys"] },
-    { "words": ["guitar", "gtr"], "type": ["Guitar"] },
-    { "words": ["pad"], "type": ["Synth Pad"] },
-    { "words": ["drum", "drums"], "type": ["Drums"] }
+    {
+      "words": [
+        "open+hat",
+        "open+hihat",
+        "open+hh",
+        "ohh",
+        "oh",
+        "openhat"
+      ],
+      "type": [
+        "Drums",
+        "Hi-Hat Open"
+      ]
+    },
+    {
+      "words": [
+        "closed+hat",
+        "closed+hihat",
+        "closed+hh",
+        "chh",
+        "closedhat"
+      ],
+      "type": [
+        "Drums",
+        "Hi-Hat Closed"
+      ]
+    },
+    {
+      "words": [
+        "rim",
+        "rimshot"
+      ],
+      "type": [
+        "Drums",
+        "Snare Rimshot"
+      ]
+    },
+    {
+      "words": [
+        "kick",
+        "kik",
+        "kck",
+        "bd",
+        "bassdrum"
+      ],
+      "type": [
+        "Drums",
+        "Kick"
+      ]
+    },
+    {
+      "words": [
+        "snare",
+        "snr",
+        "sd"
+      ],
+      "type": [
+        "Drums",
+        "Snare"
+      ]
+    },
+    {
+      "words": [
+        "clap",
+        "clp"
+      ],
+      "type": [
+        "Drums",
+        "Clap"
+      ]
+    },
+    {
+      "words": [
+        "hat",
+        "hh",
+        "hihat",
+        "hi+hat"
+      ],
+      "type": [
+        "Drums",
+        "Hi-Hat"
+      ]
+    },
+    {
+      "words": [
+        "crash"
+      ],
+      "type": [
+        "Drums",
+        "Crash Cymbal"
+      ]
+    },
+    {
+      "words": [
+        "ride"
+      ],
+      "type": [
+        "Drums",
+        "Ride Cymbal"
+      ]
+    },
+    {
+      "words": [
+        "cymbal"
+      ],
+      "type": [
+        "Drums",
+        "Cymbal"
+      ]
+    },
+    {
+      "words": [
+        "tom"
+      ],
+      "type": [
+        "Drums",
+        "Tom"
+      ]
+    },
+    {
+      "words": [
+        "shaker"
+      ],
+      "type": [
+        "Percussion",
+        "Shaker"
+      ]
+    },
+    {
+      "words": [
+        "tambourine",
+        "tamb"
+      ],
+      "type": [
+        "Percussion",
+        "Tambourine"
+      ]
+    },
+    {
+      "words": [
+        "conga"
+      ],
+      "type": [
+        "Percussion",
+        "Conga"
+      ]
+    },
+    {
+      "words": [
+        "cowbell"
+      ],
+      "type": [
+        "Percussion",
+        "Cowbell"
+      ]
+    },
+    {
+      "words": [
+        "perc",
+        "percussion"
+      ],
+      "type": [
+        "Percussion"
+      ]
+    },
+    {
+      "words": [
+        "808",
+        "bass",
+        "sub"
+      ],
+      "type": [
+        "Bass"
+      ]
+    },
+    {
+      "words": [
+        "vox",
+        "vocal",
+        "voice",
+        "acapella",
+        "shout",
+        "chant"
+      ],
+      "type": [
+        "Vocal"
+      ]
+    },
+    {
+      "words": [
+        "riser",
+        "sweep",
+        "uplifter",
+        "downlifter"
+      ],
+      "type": [
+        "Sweep & Swell"
+      ]
+    },
+    {
+      "words": [
+        "fx",
+        "sfx"
+      ],
+      "type": [
+        "Sound Effects"
+      ]
+    },
+    {
+      "words": [
+        "piano",
+        "keys",
+        "rhodes"
+      ],
+      "type": [
+        "Piano / Keys"
+      ]
+    },
+    {
+      "words": [
+        "guitar",
+        "gtr"
+      ],
+      "type": [
+        "Guitar"
+      ]
+    },
+    {
+      "words": [
+        "pad"
+      ],
+      "type": [
+        "Synth Pad"
+      ]
+    },
+    {
+      "words": [
+        "drum",
+        "drums"
+      ],
+      "type": [
+        "Drums"
+      ]
+    }
   ],
-  "loop": ["loop", "loops", "groove", "break", "breaks"],
-  "oneshot": ["oneshot", "oneshots", "one+shot", "one+shots", "hit", "hits"]
+  "loop": [
+    "loop",
+    "loops",
+    "groove"
+  ],
+  "oneshot": [
+    "oneshot",
+    "oneshots",
+    "one+shot",
+    "one+shots",
+    "hit",
+    "hits"
+  ],
+  "loopFolder": [
+    "break",
+    "breaks"
+  ]
 }
