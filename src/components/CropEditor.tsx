@@ -44,10 +44,18 @@ export function CropEditor({
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragFrom = useRef<{ mx: number; my: number; cx: number; cy: number } | null>(null);
 
+  const [loadFailed, setLoadFailed] = useState(false);
+
   // Seed from the saved crop, or from what an automatic render would produce.
   useEffect(() => {
+    let current = true;
+    setLoadFailed(false);
     const img = new Image();
+    img.onerror = () => {
+      if (current) setLoadFailed(true);
+    };
     img.onload = () => {
+      if (!current) return;
       setSize({ w: img.naturalWidth, h: img.naturalHeight });
       if (initial) {
         const v = viewFromCrop(initial, img.naturalWidth, img.naturalHeight, targetW, targetH);
@@ -59,6 +67,9 @@ export function CropEditor({
       }
     };
     img.src = sourceUrl;
+    return () => {
+      current = false;
+    };
   }, [sourceUrl, initial, targetW, targetH]);
 
   useEffect(() => {
@@ -87,6 +98,32 @@ export function CropEditor({
     pushHistory();
     setZoom(1);
     setCentre({ x: 0.5, y: 0.5 });
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="lightbox" onClick={onClose}>
+        <div className="lightbox-inner" onClick={(e) => e.stopPropagation()}>
+          <div className="note bad">
+            The source image for {file} could not be loaded. It may be missing from the pack.
+            Replace it to carry on.
+          </div>
+          <div className="actions">
+            <button className="btn" onClick={onReplace}>
+              Replace image…
+            </button>
+            {ownImage && (
+              <button className="btn ghost" onClick={onUseGroupImage}>
+                Use the pack&apos;s image
+              </button>
+            )}
+            <button className="btn ghost" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!size) {
