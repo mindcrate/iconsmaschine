@@ -443,7 +443,7 @@ export default function Page() {
                     <option
                       key={`s-${v}`}
                       value={v}
-                      label="Suggestion from KVR Audio, spelling not checked"
+                      label="(Suggestion from KVR Audio)"
                     />
                   ))}
                 </datalist>
