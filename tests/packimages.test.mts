@@ -135,3 +135,33 @@ test("the library lists each saved image once, across packs", async (t) => {
     assert.ok(img.url.startsWith(`/api/packs/${img.packId}/source?which=`));
   }
 });
+
+test("a pack saved by an older version reads back with every field the app uses", async (t) => {
+  const home = await tempHome(t);
+  const { readPack, listPacks } = await import("../src/lib/store.ts");
+  const dir = path.join(home, "packs", "old1");
+  await fs.mkdir(dir, { recursive: true });
+  // The shape of a real pack made before product, crops and overlay existed.
+  await fs.writeFile(
+    path.join(dir, "pack.json"),
+    JSON.stringify({
+      name: "MSXII-Loops-1984", kitType: "sample_kit", vendor: "MSXII-Loops-1984", subfolder: null,
+      nks2: true, background: null, padding: 0, author: "DJ", share: true, tags: ["80s"],
+      id: "old1", hasLogo: true, createdAt: "2026-11-05T02:11:30.042Z", updatedAt: "2026-11-05T02:11:30.044Z",
+    }),
+  );
+
+  const pack = (await readPack("old1"))!;
+  assert.equal(pack.product, "MSXII-Loops-1984", "product falls back to the pack name");
+  assert.deepEqual(pack.crops, {});
+  assert.equal(pack.overlay, null);
+  assert.equal(pack.nestImage, false);
+  assert.equal(pack.installedAs, null);
+  assert.equal(pack.shortName, null);
+  assert.deepEqual(pack.categories, []);
+  assert.equal(pack.fileType, "Instruments");
+  assert.equal(pack.bgColor, "000000");
+  assert.equal(pack.vendor, "MSXII-Loops-1984", "saved fields are kept");
+  assert.equal(pack.padding, 0);
+  assert.equal((await listPacks())[0].product, "MSXII-Loops-1984");
+});

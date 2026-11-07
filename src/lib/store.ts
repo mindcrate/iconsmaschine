@@ -136,10 +136,42 @@ export async function savePack(
 export async function readPack(id: string): Promise<Pack | null> {
   try {
     const raw = await fs.readFile(path.join(packDir(id), "pack.json"), "utf8");
-    return JSON.parse(raw) as Pack;
+    return withDefaults(JSON.parse(raw) as Partial<Pack> & { id: string });
   } catch {
     return null;
   }
+}
+
+/**
+ * Packs saved by older versions lack fields added since (one early pack has no
+ * product, crops or overlay), and the page reads every field. Each gap gets
+ * the value a new pack starts with.
+ */
+function withDefaults(saved: Partial<Pack> & { id: string }): Pack {
+  const defaults: Omit<Pack, "id" | "fileSources"> = {
+    name: "",
+    kitType: "sample_kit",
+    vendor: "",
+    product: "",
+    nks2: true,
+    background: null,
+    padding: 0.08,
+    fileType: "Instruments",
+    categories: [],
+    shortName: null,
+    bgColor: "000000",
+    author: "",
+    share: false,
+    tags: [],
+    nestImage: false,
+    overlay: null,
+    crops: {},
+    installedAs: null,
+    hasLogo: false,
+    createdAt: saved.updatedAt ?? new Date(0).toISOString(),
+    updatedAt: saved.createdAt ?? new Date(0).toISOString(),
+  };
+  return { ...defaults, ...saved, product: saved.product ?? saved.name ?? "" };
 }
 
 export async function readSources(
