@@ -541,3 +541,28 @@ table.calib td.absent { color: var(--muted); }
 }
 .ov-target.on .ov-name { color: var(--fg); }
 .ov-where { font-size: 10.5px; color: var(--muted); line-height: 1.35; }
+
+.sample-tags { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.st-table { display: grid; gap: 2px; font-size: 12.5px; max-height: 420px; overflow-y: auto; }
+.st-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(120px, 0.7fr) minmax(170px, 1.2fr) minmax(170px, 1.2fr);
+  gap: 10px;
+  align-items: start;
+  padding: 6px 4px;
+  border-bottom: 1px solid #2a2a2a;
+}
+.st-head { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.st-row select { width: 100%; font-size: 12px; padding: 3px 6px; }
+.st-row .dims { color: var(--muted); font-size: 11px; }
+.st-suggest { display: block; color: var(--accent); font-size: 11px; margin-top: 2px; opacity: 0.85; }
+.st-pick { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.st-pick select { flex: 1 1 100%; }
+.st-chip { display: inline-flex; gap: 4px; align-items: center; color: var(--text, #ddd); }
+.st-chip button { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; font-size: 13px; line-height: 1; }
+.st-chip button:hover { color: var(--danger); }
+.st-inherit { color: var(--muted); font-size: 11px; font-style: italic; flex: 1 1 100%; }
+@media (max-width: 760px) {
+  .st-row { grid-template-columns: 1fr 1fr; }
+  .st-head { display: none; }
+}

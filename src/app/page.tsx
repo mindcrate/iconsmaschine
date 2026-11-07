@@ -10,6 +10,7 @@ import { ReplaceImageDialog } from "@/components/ReplaceImageDialog";
 import { KitPicker } from "@/components/KitPicker";
 import { PresetEditor } from "@/components/PresetEditor";
 import { BatchTagPanel } from "@/components/BatchTagPanel";
+import { SampleTagsPanel } from "@/components/SampleTagsPanel";
 import { OverlayControls } from "@/components/OverlayControls";
 import { DEFAULT_OVERLAY, type TextOverlay } from "@/lib/overlayspec";
 import { specsFor } from "@/lib/spec";
@@ -50,6 +51,7 @@ export default function Page() {
   // is laid out image/<vendor>/<product>/; false for an installed expansion,
   // which sits flat. Set from the kit picker, overridable here.
   const [nestImage, setNestImage] = useState(false);
+  const [rulesVersion, setRulesVersion] = useState(0);
   const [tags, setTags] = useState("");
   const [nks2, setNks2] = useState(true);
   const [background, setBackground] = useState("#101010");
@@ -899,9 +901,13 @@ export default function Page() {
               onEdit={setEditing}
             />
             <div style={{ marginTop: 22 }}>
+              {kitType === "sample_kit" && nestImage && vendor.trim() && (
+                <SampleTagsPanel packId={packId} onSaved={() => setRulesVersion((n) => n + 1)} />
+              )}
               <InstallPanel
                 packId={packId}
                 onChanged={() => setKitsToken((n) => n + 1)}
+                rulesVersion={rulesVersion}
               />
             </div>
           </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatBytes, postJson } from "@/lib/client";
 import type { InstallPlan, InstallResult } from "@/lib/types";
 
@@ -14,10 +14,13 @@ interface UninstallResult {
 export function InstallPanel({
   packId,
   onChanged,
+  rulesVersion = 0,
 }: {
   packId: string;
   /** Fired after NI Resources is written to, so other panels can re-read. */
   onChanged?: () => void;
+  /** Bumped when the sample tag rules are saved, which makes a shown plan stale. */
+  rulesVersion?: number;
 }) {
   const [plan, setPlan] = useState<InstallPlan | null>(null);
   const [result, setResult] = useState<InstallResult | null>(null);
@@ -27,6 +30,12 @@ export function InstallPanel({
   const [cleanStale, setCleanStale] = useState(true);
   const [backup, setBackup] = useState(false);
   const [retag, setRetag] = useState<SampleTagResult | null>(null);
+
+  useEffect(() => {
+    setPlan(null);
+    setResult(null);
+    setRetag(null);
+  }, [rulesVersion]);
 
   async function remove() {
     if (
@@ -166,6 +175,7 @@ export function InstallPanel({
                   <div key={f}>{f}</div>
                 ))}
               </div>
+              {plan.sampleTags && <SampleTagCounts plan={plan.sampleTags} />}
             </div>
           )}
 
@@ -305,6 +315,32 @@ export function InstallPanel({
             <strong>Fully quit and relaunch Maschine</strong> - a browser rescan
             alone often does not pick these up.
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Per folder: how many files the tags change, and how many keep tags of their own. */
+function SampleTagCounts({ plan }: { plan: NonNullable<InstallPlan["sampleTags"]> }) {
+  const rows = plan.folders.filter((f) => f.change > 0 || f.keep > 0);
+  if (rows.length === 0 && plan.nonWav === 0) {
+    return <div style={{ marginTop: 6 }}>Every file already has these tags, so none will change.</div>;
+  }
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div>Per folder:</div>
+      <div style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginTop: 4 }}>
+        {rows.map((f) => (
+          <div key={f.folder || "(root)"}>
+            {f.folder || "(library folder)"}: {f.files} file{f.files === 1 ? "" : "s"}, {f.change} will
+            change{f.keep > 0 ? `, ${f.keep} keep their own tags` : ""}
+          </div>
+        ))}
+      </div>
+      {plan.nonWav > 0 && (
+        <div style={{ marginTop: 4 }}>
+          {plan.nonWav} file{plan.nonWav === 1 ? " is" : "s are"} not WAV and will get no tags.
         </div>
       )}
     </div>
