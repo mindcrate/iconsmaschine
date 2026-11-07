@@ -131,3 +131,24 @@ test("a database with an unexpected schema falls back rather than crashing", asy
   assert.equal(v.source, "fallback");
   assert.ok(v.note?.includes("Could not read"));
 });
+
+test("sample TYPES and CHARACTERS put the spelling more WAVs use first", async (t) => {
+  const file = await makeDb(t);
+  const db = new DatabaseSync(file);
+  db.exec(`
+    CREATE TABLE k_sound_info (id INTEGER, file_ext TEXT);
+    INSERT INTO k_category VALUES (6,'Drums','Hi-Hat Closed',NULL),(7,'Drums','Hihat Closed',NULL);
+    INSERT INTO k_sound_info VALUES (10,'wav'),(11,'WAV'),(12,'wav'),(13,'nksf');
+    DELETE FROM k_sound_info_category;
+    INSERT INTO k_sound_info_category VALUES (10,7),(11,7),(12,6),(13,6),(13,1);
+    INSERT INTO k_sound_info_mode VALUES (10,4),(11,4),(12,1);
+  `);
+  db.close();
+  const { readTagVocabulary } = await import("../src/lib/tagvocab.ts");
+  const v = await readTagVocabulary({ refresh: true });
+
+  assert.deepEqual(v.sampleTypes.slice(0, 2), [["Drums", "Hihat Closed"], ["Drums", "Hi-Hat Closed"]]);
+  assert.deepEqual([...v.sampleTypes].sort(), [...v.types].sort(), "every type is still offered");
+  assert.deepEqual(v.sampleCharacters.slice(0, 2), ["Analog", "Processed"]);
+  assert.deepEqual([...v.sampleCharacters].sort(), [...v.characters].sort());
+});

@@ -5,6 +5,7 @@ import {
   findMaschineDb,
   openMaschineDb,
   str as asStr,
+  tryAll,
   type MaschineDb,
 } from "./maschinedb";
 
@@ -38,6 +39,13 @@ export interface TagVocabulary {
   /** Type paths, e.g. ["Brass", "Ensemble"]. */
   types: string[][];
   characters: string[];
+  /**
+   * The same lists ordered by how many WAV files use each name, most first.
+   * Vendors spell some types two ways ("Hi-Hat Closed", "Hihat Closed") and
+   * Maschine filters them apart, so the common spelling should come first.
+   */
+  sampleTypes: string[][];
+  sampleCharacters: string[];
   /** Known vendor/product chains, for autocomplete. */
   bankChains: BankChain[];
   vendors: string[];
@@ -86,6 +94,44 @@ function readCharacters(db: Db): string[] {
   return [...seen].sort((a, b) => a.localeCompare(b));
 }
 
+const WAV_TYPE_USE = `SELECT c.category AS a, c.subcategory AS b, c.subsubcategory AS c, count(*) AS n
+  FROM k_sound_info s
+  JOIN k_sound_info_category sc ON sc.sound_info_id = s.id
+  JOIN k_category c ON c.id = sc.category_id
+  WHERE lower(s.file_ext) = 'wav' GROUP BY c.id`;
+
+const WAV_MODE_USE = `SELECT m.name AS a, count(*) AS n
+  FROM k_sound_info s
+  JOIN k_sound_info_mode sm ON sm.sound_info_id = s.id
+  JOIN k_mode m ON m.id = sm.mode_id
+  WHERE lower(s.file_ext) = 'wav' GROUP BY m.id`;
+
+/** Use counts keyed as the vocabulary keys them. Missing tables count as no use. */
+function usage(db: Db, sql: string, key: (row: Record<string, unknown>) => string): Map<string, number> {
+  const used = new Map<string, number>();
+  for (const row of tryAll(db, sql)) {
+    const k = key(row);
+    used.set(k, (used.get(k) ?? 0) + Number(row.n));
+  }
+  return used;
+}
+
+/** Most-used first; the sort is stable, so ties keep the alphabetical order. */
+function byUse<T>(items: T[], key: (t: T) => string, used: Map<string, number>): T[] {
+  return [...items].sort((x, y) => (used.get(key(y)) ?? 0) - (used.get(key(x)) ?? 0));
+}
+
+const typeKey = (parts: string[]) => JSON.stringify(parts);
+
+function readSampleOrder(db: Db, types: string[][], characters: string[]) {
+  const typeUse = usage(db, WAV_TYPE_USE, (r) => typeKey([r.a, r.b, r.c].map(str).filter(Boolean)));
+  const modeUse = usage(db, WAV_MODE_USE, (r) => str(r.a));
+  return {
+    sampleTypes: byUse(types, typeKey, typeUse),
+    sampleCharacters: byUse(characters, (c) => c, modeUse),
+  };
+}
+
 function readBankChains(db: Db): BankChain[] {
   const seen = new Map<string, BankChain>();
   for (const row of db.prepare(
@@ -114,7 +160,7 @@ let memo: CacheFile | null = null;
 
 async function cacheKey(dbPath: string): Promise<string> {
   const s = await fsp.stat(dbPath);
-  return `${dbPath}:${s.size}:${s.mtimeMs}`;
+  return `v2:${dbPath}:${s.size}:${s.mtimeMs}`;
 }
 
 export async function readTagVocabulary(
@@ -125,6 +171,8 @@ export async function readTagVocabulary(
     return {
       types: FALLBACK_TYPES,
       characters: FALLBACK_CHARACTERS,
+      sampleTypes: FALLBACK_TYPES,
+      sampleCharacters: FALLBACK_CHARACTERS,
       bankChains: [],
       vendors: [],
       source: "fallback",
@@ -158,9 +206,12 @@ export async function readTagVocabulary(
       const bankChains = readBankChains(opened.db);
       const vendors = [...new Set(bankChains.map((b) => b.vendor).filter(Boolean))].sort();
 
+      const finalTypes = types.length ? types : FALLBACK_TYPES;
+      const finalCharacters = characters.length ? characters : FALLBACK_CHARACTERS;
       const value: TagVocabulary = {
-        types: types.length ? types : FALLBACK_TYPES,
-        characters: characters.length ? characters : FALLBACK_CHARACTERS,
+        types: finalTypes,
+        characters: finalCharacters,
+        ...readSampleOrder(opened.db, finalTypes, finalCharacters),
         bankChains,
         vendors,
         source: opened.source,
@@ -182,6 +233,8 @@ export async function readTagVocabulary(
     return {
       types: FALLBACK_TYPES,
       characters: FALLBACK_CHARACTERS,
+      sampleTypes: FALLBACK_TYPES,
+      sampleCharacters: FALLBACK_CHARACTERS,
       bankChains: [],
       vendors: [],
       source: "fallback",
