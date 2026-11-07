@@ -340,8 +340,17 @@ export async function scanKits(): Promise<KitScan> {
 export interface SampleTarget {
   /** Absolute path of the WAV, as Maschine recorded it. */
   path: string;
+  /** The library folder Maschine scanned, which holds `path`. */
+  root: string;
   /** The sample's own bank chain, entries in order, empty ones dropped. */
   bankchain: string[];
+}
+
+export interface LibrarySamples {
+  samples: SampleTarget[];
+  /** Audio files Maschine lists in the library that are not WAV, so cannot be tagged. */
+  nonWav: SampleTarget[];
+  note?: string;
 }
 
 /**
@@ -351,11 +360,12 @@ export interface SampleTarget {
  */
 export async function userLibrarySamples(
   product: string,
-): Promise<{ samples: SampleTarget[]; note?: string }> {
+): Promise<LibrarySamples> {
   const dbPath = findMaschineDb();
   if (!dbPath) {
     return {
       samples: [],
+      nonWav: [],
       note: "No Maschine database found, so the library's WAV files could not be listed.",
     };
   }
@@ -367,18 +377,20 @@ export async function userLibrarySamples(
     try {
       const rows = tryAll(
         opened.db,
-        `SELECT s.file_name AS file, p.path AS root,
+        `SELECT s.file_name AS file, p.path AS root, s.file_ext AS ext,
                 b.entry1 AS e1, b.entry2 AS e2, b.entry3 AS e3
          FROM k_sound_info s
          JOIN k_bank_chain b ON b.id = s.bank_chain_id
          LEFT JOIN k_content_path p ON p.id = s.content_path_id
-         WHERE lower(trim(b.entry1)) = ? AND lower(s.file_ext) = 'wav'
+         WHERE lower(trim(b.entry1)) = ?
+           AND lower(s.file_ext) IN ('wav', 'aif', 'aiff', 'flac', 'm4a', 'mp3', 'ogg')
          ORDER BY s.file_name`,
         product.trim().toLowerCase(),
       );
 
       const seen = new Set<string>();
       const samples: SampleTarget[] = [];
+      const nonWav: SampleTarget[] = [];
       for (const r of rows) {
         // Not str(): it trims, and a file name may end in a space.
         const file = typeof r.file === "string" ? r.file : "";
@@ -386,18 +398,17 @@ export async function userLibrarySamples(
         const root = str(r.root);
         if (INSTALLED_ROOTS.some((r) => file.startsWith(r) || root.startsWith(r))) continue;
         seen.add(file);
-        samples.push({
-          path: file,
-          bankchain: [str(r.e1), str(r.e2), str(r.e3)].filter(Boolean),
-        });
+        const target = { path: file, root, bankchain: [str(r.e1), str(r.e2), str(r.e3)].filter(Boolean) };
+        (str(r.ext).toLowerCase() === "wav" ? samples : nonWav).push(target);
       }
-      return { samples };
+      return { samples, nonWav };
     } finally {
       opened.db.close();
     }
   } catch (err) {
     return {
       samples: [],
+      nonWav: [],
       note: `Could not read the Maschine database: ${(err as Error).message}`,
     };
   } finally {

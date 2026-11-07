@@ -5,6 +5,7 @@ import { packsDir, safeJoin } from "./paths";
 import type { KitType } from "./spec";
 import type { CropMap } from "./crop";
 import type { TextOverlay } from "./overlayspec";
+import { EMPTY_SAMPLE_TAGS, type SampleTags } from "./sampletags";
 
 export interface Pack {
   id: string;
@@ -60,6 +61,8 @@ export interface Pack {
    * pack folder as `source-<id>.png`. Absent on packs made before this existed.
    */
   fileSources?: Record<string, string>;
+  /** TYPES, CHARACTERS and one-shot or loop rules for a user sample library. */
+  sampleTags: SampleTags;
   /**
    * Where this pack was last written. Renaming the vendor or product changes
    * the install path, so without this the old folders would be orphaned in NI
@@ -168,6 +171,7 @@ function withDefaults(saved: Partial<Pack> & { id: string }): Pack {
     crops: {},
     installedAs: null,
     hasLogo: false,
+    sampleTags: EMPTY_SAMPLE_TAGS,
     createdAt: saved.updatedAt ?? new Date(0).toISOString(),
     updatedAt: saved.createdAt ?? new Date(0).toISOString(),
   };

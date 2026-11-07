@@ -1,5 +1,6 @@
 import { BadRequest, jsonError, readImageField, readPackFields } from "@/lib/form";
 import { listPacks, newPackId, savePack, type Pack } from "@/lib/store";
+import { EMPTY_SAMPLE_TAGS } from "@/lib/sampletags";
 
 export const runtime = "nodejs";
 
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
       id: newPackId(),
       hasLogo: logo !== null,
       installedAs: null,
+      sampleTags: EMPTY_SAMPLE_TAGS,
       createdAt: now,
       updatedAt: now,
     };

@@ -380,20 +380,22 @@ test("userLibrarySamples lists a library's own WAV files with their bank chains"
   });
 
   const { userLibrarySamples } = await import("../src/lib/kits.ts");
-  const { samples } = await userLibrarySamples(" 808 collection ");
+  const { samples, nonWav } = await userLibrarySamples(" 808 collection ");
+  const root = "/Volumes/Music/808";
   assert.deepEqual(samples, [
-    { path: "/Volumes/Music/808/kick.wav", bankchain: ["808 COLLECTION"] },
-    { path: "/Volumes/Music/808/snare.WAV", bankchain: ["808 COLLECTION"] },
+    { path: "/Volumes/Music/808/kick.wav", root, bankchain: ["808 COLLECTION"] },
+    { path: "/Volumes/Music/808/snare.WAV", root, bankchain: ["808 COLLECTION"] },
   ]);
+  assert.deepEqual(nonWav, [{ path: "/Volumes/Music/808/loop.aif", root, bankchain: ["808 COLLECTION"] }]);
 
   const nested = await userLibrarySamples("Projects");
   assert.deepEqual(nested.samples, [
-    { path: "/Volumes/Music/808/nested.wav", bankchain: ["Projects", "808 Collection"] },
+    { path: "/Volumes/Music/808/nested.wav", root: "/Volumes/Music/808", bankchain: ["Projects", "808 Collection"] },
   ]);
 
   const quoted = await userLibrarySamples("Mike's Kit");
   assert.deepEqual(quoted.samples, [
-    { path: "/Volumes/Music/mike/hat .wav", bankchain: ["Mike's Kit"] },
+    { path: "/Volumes/Music/mike/hat .wav", root: "/Volumes/Music/808", bankchain: ["Mike's Kit"] },
   ]);
 });
 

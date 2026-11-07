@@ -157,6 +157,7 @@ test("a pack saved by an older version reads back with every field the app uses"
   assert.equal(pack.overlay, null);
   assert.equal(pack.nestImage, false);
   assert.equal(pack.installedAs, null);
+  assert.deepEqual(pack.sampleTags, { rules: {}, replaceExisting: false, matchFileNames: false });
   assert.equal(pack.shortName, null);
   assert.deepEqual(pack.categories, []);
   assert.equal(pack.fileType, "Instruments");
