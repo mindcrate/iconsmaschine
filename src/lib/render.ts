@@ -121,19 +121,22 @@ export interface RenderedFile {
 }
 
 export async function renderPack(
-  sources: { artwork: Buffer; logo?: Buffer | null },
+  sources: { artwork: Buffer; logo?: Buffer | null; files?: Record<string, Buffer> },
   specs: ImageSpec[],
   opts: RenderOptions = {},
   crops: CropMap = {},
 ): Promise<RenderedFile[]> {
   return Promise.all(
     specs.map(async (spec) => {
-      const useLogo = spec.source === "logo" && Boolean(sources.logo);
-      const source = useLogo ? sources.logo! : sources.artwork;
+      const own = sources.files?.[spec.file] ?? null;
+      const useLogo = !own && spec.source === "logo" && Boolean(sources.logo);
+      const source = own ?? (useLogo ? sources.logo! : sources.artwork);
       const buffer = await renderOne(source, spec, {
         ...opts,
         crop: crops[spec.file] ?? null,
-        haveLogoSource: useLogo,
+        // A file's own image on a logo file was picked for that file, so it
+        // keeps the logo rule (fit inside, never clipped).
+        haveLogoSource: useLogo || (own !== null && spec.source === "logo"),
         overlay: overlayAppliesTo(opts.overlay ?? null, spec.file)
           ? opts.overlay
           : null,

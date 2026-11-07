@@ -17,13 +17,13 @@ export async function buildPack(
   const pack = await readPack(id);
   if (!pack) throw new PackNotFound();
 
-  const sources = await readSources(id);
+  const sources = await readSources(id, pack.fileSources ?? {});
   if (!sources.artwork) {
     throw new Error("This pack has no artwork image stored.");
   }
 
   const files = await renderPack(
-    { artwork: sources.artwork, logo: sources.logo },
+    { artwork: sources.artwork, logo: sources.logo, files: sources.files },
     specsFor({ nks2: pack.nks2 }),
     { background: pack.background, padding: pack.padding, overlay: pack.overlay },
     pack.crops ?? {},

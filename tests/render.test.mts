@@ -324,3 +324,27 @@ test("an overlay reaches the files it names and leaves the others alone", async 
   assert.equal(meta.width, spec.width);
   assert.equal(meta.height, spec.height);
 });
+
+test("renderPack uses a file's own image for that file only", async () => {
+  const artwork = await source(1200, 1200);
+  const blue = await sharp({
+    create: { width: 1600, height: 300, channels: 4, background: { r: 0, g: 0, b: 255, alpha: 1 } },
+  }).png().toBuffer();
+
+  const out = await renderPack(
+    { artwork, logo: null, files: { "NKS2_hardware_banner.webp": blue } },
+    specsFor({ nks2: true }),
+    { padding: 0, background: null },
+  );
+  const blueness = async (buffer: Buffer) => {
+    const { channels } = await sharp(buffer).stats();
+    return channels[2].mean - channels[0].mean;
+  };
+  for (const f of out) {
+    if (f.file === "NKS2_hardware_banner.webp") {
+      assert.ok((await blueness(f.buffer)) > 0, "the banner comes from its own image");
+    } else {
+      assert.ok((await blueness(f.buffer)) < 0, `${f.file} still comes from the artwork`);
+    }
+  }
+});
