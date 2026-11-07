@@ -64,3 +64,33 @@ test("clearLogo still removes the logo", async (t) => {
   await assert.rejects(fs.stat(logo));
   assert.equal((await res.json()).pack.hasLogo, false);
 });
+
+const sampleTagsRoute = () => import("../src/app/api/packs/[id]/sample-tags/route.ts");
+const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
+
+test("saving sample tag rules keeps the valid parts and drops the rest", async (t) => {
+  await packWithLogo(t);
+  const { PUT } = await sampleTagsRoute();
+  const body = {
+    rules: { Kicks: { kind: "loop", types: [["Drums", "Kick"], ["A", "B", "C", "D"]] }, "../x": { kind: "loop" } },
+    replaceExisting: true,
+  };
+  const res = await PUT(new Request("http://x", { method: "PUT", body: JSON.stringify(body) }), ctx("p1"));
+  assert.equal(res.status, 200);
+  const expected = {
+    rules: { Kicks: { kind: "loop", types: [["Drums", "Kick"]] } },
+    replaceExisting: true,
+    matchFileNames: false,
+  };
+  assert.deepEqual((await res.json()).sampleTags, expected);
+  const { readPack } = await import("../src/lib/store.ts");
+  assert.deepEqual((await readPack("p1"))!.sampleTags, expected, "the rules are saved with the pack");
+  assert.equal((await readPack("p1"))!.hasLogo, true, "other fields are untouched");
+});
+
+test("sample tag rules for a missing pack are a 404", async (t) => {
+  await packWithLogo(t);
+  const { GET, PUT } = await sampleTagsRoute();
+  assert.equal((await GET(new Request("http://x"), ctx("nope"))).status, 404);
+  assert.equal((await PUT(new Request("http://x", { method: "PUT", body: "{}" }), ctx("nope"))).status, 404);
+});
