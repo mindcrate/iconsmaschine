@@ -12,3 +12,7 @@ next-env.d.ts
 
 # Local-only notes (never pushed)
 docs/local/
+
+# Mac app build
+/dist/
+/electron/resources/
