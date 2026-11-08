@@ -1,6 +1,6 @@
 # PRD: iconmaschine as a Mac app
 
-Status: draft, waiting for Tim's approval.
+Status: approved by Tim, 2026-11-08.
 
 ## Problem statement
 
