@@ -10,7 +10,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --import ./tests/ts-resolver.mjs --test tests/*.test.mts",
-    "app": "ICONMASCHINE_STANDALONE=1 next build && node scripts/prepare-app.mjs && electron-builder --mac --arm64 && scripts/smoke-app.sh"
+    "app": "ICONMASCHINE_STANDALONE=1 next build && node scripts/prepare-app.mjs && electron-builder --mac --arm64 && scripts/smoke-app.sh",
+    "app:check": "node scripts/check-app.mjs"
   },
   "dependencies": {
     "next": "^16.4.5",
