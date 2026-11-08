@@ -1,3 +1,5 @@
+import { setting } from "./settings";
+
 /**
  * Image search via SerpAPI's Google Images engine.
  *
@@ -20,7 +22,7 @@ export interface ImageHit {
 export class MissingSerpKeyError extends Error {
   constructor() {
     super(
-      "No SERPAPI_API_KEY found. Add it to .env.local and restart the app, or upload artwork instead.",
+      "No SerpAPI key is set. Add it in Settings, or upload artwork instead.",
     );
     this.name = "MissingSerpKeyError";
   }
@@ -38,7 +40,7 @@ export interface SearchOptions {
 }
 
 export async function searchImages(opts: SearchOptions): Promise<ImageHit[]> {
-  const key = process.env.SERPAPI_API_KEY;
+  const key = setting("SERPAPI_API_KEY");
   if (!key) throw new MissingSerpKeyError();
 
   // tbs stacks Google's image filters: ic:trans = transparent, isz:l = large.

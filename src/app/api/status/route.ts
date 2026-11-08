@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { iconmaschineHome, niDistDatabaseDir, niImageDir } from "@/lib/paths";
+import { setting } from "@/lib/settings";
 
 export const runtime = "nodejs";
 
@@ -26,8 +27,8 @@ export async function GET() {
     rootExists,
     rootWritable,
     home: iconmaschineHome(),
-    hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
-    hasSerpKey: Boolean(process.env.SERPAPI_API_KEY),
+    hasOpenAiKey: Boolean(setting("OPENAI_API_KEY")),
+    hasSerpKey: Boolean(setting("SERPAPI_API_KEY")),
     distDbDir,
     distDbExists,
     platform: process.platform,

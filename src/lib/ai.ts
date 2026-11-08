@@ -1,3 +1,5 @@
+import { setting } from "./settings";
+
 /**
  * Artwork generation via the OpenAI images API.
  *
@@ -29,7 +31,7 @@ export interface GenerateInput {
 export class MissingApiKeyError extends Error {
   constructor() {
     super(
-      "No OPENAI_API_KEY found. Add it to .env.local and restart the app, or upload artwork instead.",
+      "No OpenAI key is set. Add it in Settings, or upload artwork instead.",
     );
     this.name = "MissingApiKeyError";
   }
@@ -41,7 +43,7 @@ export class NoUsableModelError extends Error {
       tried.length === 0
         ? `Your OpenAI account lists no image models. Last error: ${detail}`
         : `None of these image models worked: ${tried.join(", ")}. Last error: ${detail} ` +
-          `You can pin a specific one with OPENAI_IMAGE_MODEL in .env.local.`,
+          `You can pin a specific one with the image model field in Settings (OPENAI_IMAGE_MODEL).`,
     );
     this.name = "NoUsableModelError";
   }
@@ -131,10 +133,10 @@ export interface GenerateResult {
 export async function generateArtwork(
   input: GenerateInput,
 ): Promise<GenerateResult> {
-  const key = process.env.OPENAI_API_KEY;
+  const key = setting("OPENAI_API_KEY");
   if (!key) throw new MissingApiKeyError();
 
-  const pinned = process.env.OPENAI_IMAGE_MODEL?.trim();
+  const pinned = setting("OPENAI_IMAGE_MODEL");
   const candidates = pinned ? [pinned] : await listImageModels(key);
 
   if (candidates.length === 0) {

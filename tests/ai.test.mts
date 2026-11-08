@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+// Keys saved in the real ~/.iconmaschine/settings.json must not leak into these tests.
+process.env.ICONMASCHINE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "im-nokey-"));
 import {
   generateArtwork,
   MissingApiKeyError,
