@@ -33,6 +33,51 @@ Port already taken? `PORT=4322 npm run dev`. To free the default instead:
 lsof -ti tcp:4321 | xargs kill
 ```
 
+## Use it as a Mac app
+
+The Mac app runs the same code with no terminal. It starts its own server when
+you open it and stops the server when you quit. It works on Apple Silicon Macs
+(M1 or later) only.
+
+### Make the app
+
+On the Mac that has this project:
+
+```bash
+npm run app
+```
+
+This builds `dist/iconmaschine-0.1.0.dmg` (about 130 MB) and runs a quick check
+on the packaged app. The installed app is about 310 MB. To test it more fully,
+run `npm run app:check`. That needs Maschine 3 on the Mac.
+
+### Install it on any Mac
+
+1. Copy the `.dmg` to the Mac with AirDrop, a USB stick or iCloud Drive.
+2. Open the `.dmg` and drag iconmaschine into Applications.
+3. Open iconmaschine. The first time, macOS blocks it, because the app is not
+   signed with an Apple developer ID. Click **Done**, then go to
+   **System Settings > Privacy & Security** and click **Open Anyway**. Only the
+   first open needs this.
+4. In the app, open **Settings** in the drawer and paste your OpenAI and SerpAPI
+   keys. The app does not read `.env.local`.
+5. Run **Calibrate** once.
+
+macOS asks for access to your Documents folder the first time the app reads
+presets in `~/Documents/Native Instruments/User Content`. It asks again for
+sample libraries on the Desktop or on an external drive. Click **Allow**.
+
+### Good to know
+
+- Packs, backups and tag rules stay in `~/.iconmaschine` on each Mac. They do
+  not move with the app.
+- Keys are saved in `~/.iconmaschine/settings.json`, which only your user
+  account can read. An environment variable with the same name wins over it.
+- The server log is at `~/Library/Logs/iconmaschine/server.log`.
+- To update, run `npm run app` again here, copy the new `.dmg` and replace the
+  app in Applications.
+- `npm run dev` still works as before, on port 4321.
+
 ## What it does
 
 1. **Pick a kit type** — Sample Kit, Kontakt Instrument, Plugin, or Maschine Group.
@@ -174,10 +219,6 @@ All optional — see `.env.example`.
   libraries. Unofficial libraries and user Sounds will not pick them up.
 - Stock Maschine does not read custom images for user **Groups**. That kit type
   builds the pack anyway so it is ready if that changes.
-- **Sample tagging is not built yet.** This app handles images and folders. Writing
-  Bank / Type / Sub-Type / Character tags into samples so they filter correctly
-  in the Maschine browser is a separate job — see the roadmap note in
-  `docs/nks-image-spec.md`.
 
 ## Tests
 
