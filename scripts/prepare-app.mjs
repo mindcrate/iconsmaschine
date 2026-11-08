@@ -22,6 +22,13 @@ if (fs.existsSync(path.join(root, "public"))) {
   fs.cpSync(path.join(root, "public"), path.join(sa, "public"), { recursive: true });
 }
 
+// A dynamic path in presets.ts makes the tracer copy the whole project in.
+// The server needs only server.js, package.json, .next and node_modules.
+const keep = new Set(["server.js", "package.json", ".next", "node_modules", "public"]);
+for (const name of fs.readdirSync(sa)) {
+  if (!keep.has(name)) fs.rmSync(path.join(sa, name), { recursive: true, force: true });
+}
+
 const banned = [];
 const walk = (dir) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

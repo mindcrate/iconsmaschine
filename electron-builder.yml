@@ -1,0 +1,26 @@
+appId: com.timperry.iconmaschine
+productName: iconmaschine
+directories:
+  output: dist
+  buildResources: electron/resources
+# Only the main process goes in app.asar. scripts/after-pack.cjs copies the
+# standalone server into Resources/server.
+files:
+  - electron/main.cjs
+  - package.json
+  - "!node_modules/**/*"
+afterPack: scripts/after-pack.cjs
+npmRebuild: false
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  category: public.app-category.music
+  icon: electron/resources/icon.png
+  # Ad-hoc signature: enough for Tim's own Macs, not for sharing. The hardened
+  # runtime only matters for notarising, and with an ad-hoc signature it blocks
+  # sharp's native library from loading.
+  identity: "-"
+  hardenedRuntime: false
+dmg:
+  artifactName: iconmaschine-${version}.dmg
