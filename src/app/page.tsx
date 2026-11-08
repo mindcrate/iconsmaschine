@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArtworkPicker, type ArtworkSource } from "@/components/ArtworkPicker";
 import { CalibratePanel } from "@/components/CalibratePanel";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { InstallPanel } from "@/components/InstallPanel";
 import { LibraryPanel } from "@/components/LibraryPanel";
 import { CropEditor } from "@/components/CropEditor";
@@ -1019,6 +1020,13 @@ export default function Page() {
           <section className="step" hidden={view !== "calibrate"}>
             <h2>Calibrate against your installed libraries</h2>
             <CalibratePanel onDone={refreshStatus} />
+          </section>
+        )}
+
+        {visited.has("settings") && (
+          <section className="step" hidden={view !== "settings"}>
+            <h2>Settings</h2>
+            <SettingsPanel onSaved={refreshStatus} />
           </section>
         )}
 

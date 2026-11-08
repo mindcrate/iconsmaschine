@@ -3,7 +3,7 @@ import type { KitType } from "./spec";
 export type StepId =
   | "kit" | "name" | "browser" | "artwork" | "text" | "details" | "review" | "sampletags" | "install";
 export type ToolId = "presets" | "batch";
-export type PageId = "packs" | "calibrate";
+export type PageId = "packs" | "calibrate" | "settings";
 export type ViewId = StepId | ToolId | PageId;
 
 /** What the steps need to know about the pack being made. */
@@ -61,6 +61,7 @@ export const TOOLS: readonly { id: ToolId; label: string; kits: readonly KitType
 export const PAGES: readonly { id: PageId; label: string }[] = [
   { id: "packs", label: "Your packs" },
   { id: "calibrate", label: "Calibrate" },
+  { id: "settings", label: "Settings" },
 ];
 
 export type StepState = "done" | "open" | "locked";
